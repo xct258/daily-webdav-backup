@@ -265,6 +265,9 @@ jobs:
 
 注意：hook 在容器里执行，`pg_dump` 等命令需要装进镜像。
 
+完整示例（PostgreSQL / MySQL / SQLite / Redis / MongoDB、恢复命令、注意事项）见：
+[docs/database-backup.md](docs/database-backup.md)。
+
 ### 保留策略
 
 - `keep_last: 7`：每个任务远端保留最近 7 份
@@ -426,7 +429,7 @@ python3 -m unittest discover -s tests -v
 - 首次启动没有 `config/config.yml` 时会自动生成占位配置；占位任务禁用、推送关闭，修改后重启即可
 - 如果 `./config` 是只读挂载，自动生成会失败并停止启动，此时先在宿主机创建配置文件
 - `config.yml` 里有 WebDAV 密码，宿主机上建议 `chmod 600`
-- 归档使用 tar，不做文件系统快照；数据库请用 `pre_cmd` dump
+- 归档使用 tar，不做文件系统快照；数据库请用 `pre_cmd` dump，详见 [docs/database-backup.md](docs/database-backup.md)
 - 每天全量备份会占用 `保留份数 × 单份大小` 的远端空间；数据量很大时建议改用 restic
 - WebDAV 服务器需要支持大文件上传；部分服务对单文件大小有限制
 - 首次启动如果 WebDAV 不可达，容器仍会启动，任务会按重试策略继续尝试
