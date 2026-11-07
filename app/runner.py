@@ -492,7 +492,7 @@ class Runner:
     def _cleanup_remote(
         self, job: Job, target: RemoteTarget, current_filename: str
     ) -> None:
-        remote_dir = self.config.job_base_remote_path(job, target)
+        remote_dir = self.config.job_cleanup_root(job, target)
         entries = self.rclone.list_files(remote_dir, recursive=True)
         keep_last, keep_days = self.config.target_retention(job, target)
         policy = replace(job, keep_last=keep_last, keep_days=keep_days)

@@ -111,9 +111,9 @@ webdav:
 
   # 远端时间目录格式，默认按天：%Y-%m-%d
   # 最终结构：
-  #   <target.path>/<job>/<时间>/<归档>
+  #   <target.path>/<时间>/<job>/<归档>
   # 例如：
-  #   backups/nas/docker/2026-11-07/docker-20261107-175000.tar.zst.age
+  #   backups/nas/2026-11-07/docker/docker-20261107-175000.tar.zst.age
   # 空字符串或 "none" 表示不加时间目录
   date_format: "%Y-%m-%d"
 

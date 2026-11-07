@@ -93,8 +93,8 @@ discover_root: "/sources"
 #   0 或 always 表示每次调度都上传。
 #
 # date_format：远端时间目录格式，默认按天
-#   最终结构：<target.path>/<job>/<时间>/<归档>
-#   例：backups/nas/docker/2026-11-08/docker-....tar.zst
+#   最终结构：<target.path>/<时间>/<job>/<归档>
+#   例：backups/nas/2026-11-08/docker/docker-....tar.zst
 #   空字符串或 "none" 表示不加时间目录
 #
 # remote_name：rclone remote 名，默认 webdav
@@ -216,7 +216,7 @@ defaults:
 # 7. 任务列表
 #
 # 每个 job 生成一个归档，上传到：
-#   <target.path>/<job.name>/<时间>/<archive>
+#   <target.path>/<时间>/<job.name>/<archive>
 #
 # name：任务名，同时作为远端子目录和文件名前缀
 #   只能包含字母、数字、下划线、点、横线

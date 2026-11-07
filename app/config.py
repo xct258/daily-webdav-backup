@@ -211,10 +211,8 @@ class Config:
         except ZoneInfoNotFoundError as exc:
             raise ConfigError(f"时区不存在：{self.timezone}") from exc
 
-    def job_base_remote_path(
-        self, job: Job, target: RemoteTarget
-    ) -> str:
-        """任务在某个目标下的根目录，不含时间层。"""
+    def job_cleanup_root(self, job: Job, target: RemoteTarget) -> str:
+        """保留策略/list 的递归根目录。"""
         if job.remote_path:
             if len(self.webdav.targets) > 1:
                 raise ConfigError(
@@ -222,22 +220,31 @@ class Config:
                     "多目标模式不支持 job.remote_path"
                 )
             return _strip_slashes(job.remote_path)
-        base = target.path
-        return f"{base}/{job.name}" if base else job.name
+        return target.path
 
     def job_remote_path(
         self, job: Job, target: RemoteTarget, when=None
     ) -> str:
         """任务在某个目标下的目录，格式：
 
-        <target.path>/<job>/<date_format>/<archive>
+        <target.path>/<date_format>/<job>/<archive>
         """
-        base = self.job_base_remote_path(job, target)
-        if not self.webdav.date_format:
-            return base
         moment = when or now(self.tz)
-        date_dir = moment.strftime(self.webdav.date_format).strip("/")
-        return f"{base}/{date_dir}" if date_dir else base
+        date_dir = (
+            moment.strftime(self.webdav.date_format).strip("/")
+            if self.webdav.date_format
+            else ""
+        )
+
+        if job.remote_path:
+            # 单目标兼容模式：job.remote_path 是任务目录，时间放在任务目录下
+            base = _strip_slashes(job.remote_path)
+            return f"{base}/{date_dir}" if date_dir else base
+
+        base = target.path
+        if date_dir:
+            base = f"{base}/{date_dir}" if base else date_dir
+        return f"{base}/{job.name}" if base else job.name
 
     def target_retention(self, job: Job, target: RemoteTarget) -> tuple[int, int]:
         keep_last = (

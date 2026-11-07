@@ -223,22 +223,29 @@ def cmd_list(args: argparse.Namespace) -> int:
 
     for job in jobs:
         for target in config.webdav.targets:
-            remote_dir = config.job_base_remote_path(job, target)
+            remote_dir = config.job_cleanup_root(job, target)
             entries = rclone.list_files(remote_dir, recursive=True)
             print(
                 f"\n[{job.name}] {config.webdav.remote_name}:{remote_dir}"
             )
-            if not entries:
+            matched = []
+            for item in entries:
+                path = str(item.get("Path") or item.get("Name") or "")
+                name = path.rsplit("/", 1)[-1]
+                if name.endswith(".sha256"):
+                    continue
+                if not name.startswith(job.name + "-"):
+                    continue
+                matched.append(item)
+            if not matched:
                 print("  （空）")
                 continue
             for item in sorted(
-                entries,
+                matched,
                 key=lambda value: str(value.get("Path") or ""),
                 reverse=True,
             ):
                 path = str(item.get("Path") or item.get("Name") or "")
-                if path.endswith(".sha256"):
-                    continue
                 size = int(item.get("Size") or 0)
                 modtime = str(item.get("ModTime") or "")
                 print(f"  {path}  {human_size(size):>10}  {modtime}")

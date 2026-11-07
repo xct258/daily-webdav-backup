@@ -134,7 +134,7 @@ discover_root: "/sources"
 每个任务生成一个归档，上传到：
 
 ```text
-<remote_path>/<任务名>/<时间>/
+<remote_path>/<时间>/<任务名>/
 ```
 
 如果某个目录需要单独的排除规则、保留策略、`pre_cmd` 等，再写手动 job。
@@ -222,14 +222,14 @@ webdav:
 最终目录结构：
 
 ```text
-<target.path>/<job.name>/<date_format>/<archive>
+<target.path>/<date_format>/<job.name>/<archive>
 ```
 
 例如：
 
 ```text
-backups/nas/docker/2026-11-07/docker-20261107-175000.tar.zst.age
-backups/nas2/docker/2026-11-07/docker-20261107-175000.tar.zst.age
+backups/nas/2026-11-07/docker/docker-20261107-175000.tar.zst.age
+backups/nas2/2026-11-07/docker/docker-20261107-175000.tar.zst.age
 ```
 
 保留策略会递归扫描任务目录，因此可以跨多个时间目录执行 `keep_last` / `keep_days`。
