@@ -13,8 +13,8 @@ set -euo pipefail
 export LOG_BASE_DIR="${LOG_BASE_DIR:-/data/logs}"
 export CONFIG_FILE="${CONFIG_FILE:-/config/config.yml}"
 export STATE_DIR="${STATE_DIR:-/data/state}"
-# 临时归档固定放容器内部，不落到被备份的挂载目录里
-export STAGING_DIR=/tmp/backup-staging
+# 临时归档固定放容器内部，不落到被备份的挂载目录里；不要挂载这个路径
+STAGING_DIR=/tmp/backup-staging
 
 mkdir -p "$STATE_DIR" "$STAGING_DIR" "$LOG_BASE_DIR/service"
 

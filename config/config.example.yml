@@ -105,7 +105,7 @@ jobs:
     # remote_path: "/backups/nas/appdata"   # 可选：覆盖该任务的远端目录
     exclude:
       - "**/cache/**"
-    # 打包前执行，适合数据库 dump；输出到 /tmp/backup-staging/hooks/<job>/
+    # 打包前执行，适合数据库 dump；输出到容器内部 /tmp/backup-hooks/<job>/
     # 记得把该目录也加进 paths
     pre_cmd: ""
     # 打包后执行，无论成功失败都会执行

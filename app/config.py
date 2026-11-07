@@ -629,7 +629,7 @@ def describe(config: Config) -> str:
         f"WebDAV 用户：{config.webdav.user}",
         f"WebDAV 远端根：{config.webdav.remote_path}",
         f"推送：{'启用' if config.notify.enabled else '关闭'} {config.notify.api_url}",
-        f"staging：{config.staging_dir}（固定）",
+        f"staging：{config.staging_dir}（容器内部固定，不挂载）",
         f"state：{config.state_dir}",
         f"加密：{'开启（' + config.encryption.method + '）' if config.encryption.enabled else '关闭'}",
         f"自动发现：{'开启' if config.auto_discover else '关闭'}"

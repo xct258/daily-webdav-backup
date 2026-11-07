@@ -144,6 +144,12 @@ def cmd_validate(args: argparse.Namespace) -> int:
                     f"{config.encryption.passphrase_env}"
                 )
 
+    if os.path.ismount(config.staging_dir):
+        errors.append(
+            f"staging 目录不能挂载到宿主机：{config.staging_dir}"
+            "（它必须只存在于容器内部）"
+        )
+
     for job in config.jobs:
         if not job.enabled:
             continue

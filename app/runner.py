@@ -20,6 +20,9 @@ from util import human_size, iso, now
 
 LOG = logging.getLogger("backup.runner")
 
+# 数据库 dump / pre_cmd / post_cmd 的临时目录，和打包 staging 分开
+HOOK_BASE_DIR = "/tmp/backup-hooks"
+
 
 class RunnerError(Exception):
     """任务执行失败。"""
@@ -330,10 +333,7 @@ class Runner:
     # ------------------------------------------------------------------
     def _preflight(self, job: Job) -> None:
         # hook 目录先建好，pre_cmd 可以直接往里写 dump 文件
-        os.makedirs(
-            os.path.join(self.config.staging_dir, "hooks", job.name),
-            exist_ok=True,
-        )
+        os.makedirs(os.path.join(HOOK_BASE_DIR, job.name), exist_ok=True)
 
         missing = [path for path in job.paths if not os.path.exists(path)]
         if missing:
@@ -358,7 +358,7 @@ class Runner:
     def _run_hook(
         self, command: str, phase: str, job: Job, archive_path: str = ""
     ) -> None:
-        hook_dir = os.path.join(self.config.staging_dir, "hooks", job.name)
+        hook_dir = os.path.join(HOOK_BASE_DIR, job.name)
         os.makedirs(hook_dir, exist_ok=True)
         env = os.environ.copy()
         env.update(
@@ -367,7 +367,6 @@ class Runner:
                 "JOB_NAME": job.name,
                 "PHASE": phase,
                 "ARCHIVE_PATH": archive_path,
-                "STAGING_DIR": self.config.staging_dir,
                 "HOOK_DIR": hook_dir,
                 "ARCHIVE_ROOT": job.archive_root,
             }

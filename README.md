@@ -248,15 +248,15 @@ jobs:
   - 设为 `/sources`：归档里是 `etc`
 - `pre_cmd` 在打包前执行，适合数据库 dump
 - `post_cmd` 无论成功失败都会执行
-- hook 里可以使用环境变量 `JOB_NAME`、`PHASE`、`ARCHIVE_PATH`、`STAGING_DIR`、`HOOK_DIR`
+- hook 里可以使用环境变量 `JOB_NAME`、`PHASE`、`ARCHIVE_PATH`、`HOOK_DIR`
 
 数据库示例：
 
 ```yaml
   - name: "database"
     paths:
-      - "/tmp/backup-staging/hooks/database"
-    archive_root: "/tmp/backup-staging/hooks"
+      - "/tmp/backup-hooks/database"
+    archive_root: "/tmp/backup-hooks"
     pre_cmd: |
       mkdir -p "$HOOK_DIR"
       pg_dump -U app app > "$HOOK_DIR/app.sql"
@@ -424,8 +424,8 @@ notify:
 | `LOG_LEVEL` | `INFO` | 日志级别 |
 | `HEALTH_MAX_AGE` | `300` | 心跳最大秒数 |
 
-> 临时归档固定使用 `/tmp/backup-staging`，不能通过环境变量修改。  
-> 这样归档不会出现在被备份的宿主机挂载目录中。容器重建后 `/tmp` 会清空，未完成的上传会丢失；`docker restart` 不受影响。
+> 临时归档固定使用容器内部的 `/tmp/backup-staging`，不能通过环境变量修改，也不要挂载它。  
+> 打包和上传都在容器内完成，上传成功后自动删除。容器重建后 `/tmp` 会清空，未完成的上传会丢失；`docker restart` 不受影响。
 
 ---
 

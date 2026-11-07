@@ -87,7 +87,7 @@ extra_hosts:
 
 ### 4. 临时空间和超时
 
-dump 会写到 `/tmp/backup-staging/hooks/<job>/`，默认超时 300 秒。
+dump 会写到 `/tmp/backup-hooks/<job>/`，默认超时 300 秒。
 
 数据库较大时在 compose 里加：
 
@@ -105,8 +105,8 @@ environment:
 
 ```yaml
 paths:
-  - "/tmp/backup-staging/hooks/postgres"
-archive_root: "/tmp/backup-staging/hooks"
+  - "/tmp/backup-hooks/postgres"
+archive_root: "/tmp/backup-hooks"
 ```
 
 这样归档里是：
@@ -138,8 +138,8 @@ jobs:
   - name: "postgres"
     enabled: true
     paths:
-      - "/tmp/backup-staging/hooks/postgres"
-    archive_root: "/tmp/backup-staging/hooks"
+      - "/tmp/backup-hooks/postgres"
+    archive_root: "/tmp/backup-hooks"
     pre_cmd: |
       set -euo pipefail
       mkdir -p "$HOOK_DIR"
@@ -198,8 +198,8 @@ jobs:
   - name: "mysql"
     enabled: true
     paths:
-      - "/tmp/backup-staging/hooks/mysql"
-    archive_root: "/tmp/backup-staging/hooks"
+      - "/tmp/backup-hooks/mysql"
+    archive_root: "/tmp/backup-hooks"
     pre_cmd: |
       set -euo pipefail
       mkdir -p "$HOOK_DIR"
@@ -258,8 +258,8 @@ jobs:
   - name: "sqlite"
     enabled: true
     paths:
-      - "/tmp/backup-staging/hooks/sqlite"
-    archive_root: "/tmp/backup-staging/hooks"
+      - "/tmp/backup-hooks/sqlite"
+    archive_root: "/tmp/backup-hooks"
     pre_cmd: |
       set -euo pipefail
       mkdir -p "$HOOK_DIR"
@@ -271,7 +271,7 @@ jobs:
 或者：
 
 ```sql
-VACUUM INTO '/tmp/backup-staging/hooks/sqlite/data.db';
+VACUUM INTO '/tmp/backup-hooks/sqlite/data.db';
 ```
 
 不要把正在写入的 `.db` 和 `-wal` / `-shm` 直接 tar。
@@ -291,8 +291,8 @@ jobs:
   - name: "redis"
     enabled: true
     paths:
-      - "/tmp/backup-staging/hooks/redis"
-    archive_root: "/tmp/backup-staging/hooks"
+      - "/tmp/backup-hooks/redis"
+    archive_root: "/tmp/backup-hooks"
     pre_cmd: |
       set -euo pipefail
       mkdir -p "$HOOK_DIR"
@@ -321,8 +321,8 @@ jobs:
   - name: "mongodb"
     enabled: true
     paths:
-      - "/tmp/backup-staging/hooks/mongodb"
-    archive_root: "/tmp/backup-staging/hooks"
+      - "/tmp/backup-hooks/mongodb"
+    archive_root: "/tmp/backup-hooks"
     pre_cmd: |
       set -euo pipefail
       mkdir -p "$HOOK_DIR"
