@@ -101,10 +101,6 @@ class Runner:
         )
 
         try:
-            if not dry_run:
-                # 先记录 attempt，进程中途崩溃也不会被误判为“今天没跑过”
-                self.state.mark_attempt(result.started_at)
-
             try:
                 self.rclone.ensure_config()
             except (RcloneError, OSError) as exc:
@@ -123,6 +119,11 @@ class Runner:
                 result.error = "没有可执行的任务"
                 LOG.warning(result.error)
             else:
+                if not dry_run:
+                    # 有真实任务时才记录 attempt；全部禁用时不记，
+                    # 这样用户改完配置重启后仍能触发首次执行。
+                    self.state.mark_attempt(result.started_at)
+
                 for job in jobs:
                     if self.stop_event.is_set():
                         LOG.warning("收到停止信号，剩余任务不再执行")
