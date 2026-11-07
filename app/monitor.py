@@ -240,25 +240,25 @@ class Monitor:
         min_pct: float,
         low: bool,
     ) -> None:
+        space = (
+            f"{human_size(snapshot.free)} / {human_size(snapshot.total)}"
+            f"（{snapshot.free_percent:.1f}%）"
+        )
         if low:
-            title = f"磁盘空间不足：{snapshot.name}"
+            title = f"磁盘空间不足：{snapshot.name}（剩余 {space}）"
             status = "warn"
             message = (
                 f"**路径**：`{snapshot.path}`\n\n"
-                f"**剩余**：{human_size(snapshot.free)} / "
-                f"{human_size(snapshot.total)}"
-                f"（{snapshot.free_percent:.1f}%）\n\n"
+                f"**剩余**：{space}\n\n"
                 f"**阈值**：{min_gb:g} GB 或 {min_pct:g}%"
             )
             push = None
         else:
-            title = f"磁盘空间恢复：{snapshot.name}"
+            title = f"磁盘空间恢复：{snapshot.name}（剩余 {space}）"
             status = "ok"
             message = (
                 f"**路径**：`{snapshot.path}`\n\n"
-                f"**当前剩余**：{human_size(snapshot.free)} / "
-                f"{human_size(snapshot.total)}"
-                f"（{snapshot.free_percent:.1f}%）"
+                f"**当前剩余**：{space}"
             )
             # 恢复通知默认也推到 MQTT，不受 on_success_mqtt 影响
             push = True

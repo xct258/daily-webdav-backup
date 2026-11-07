@@ -3,13 +3,15 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
 from config import load_config  # noqa: E402
-from monitor import is_low, should_notify  # noqa: E402
+from monitor import Monitor, is_low, should_notify  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -54,6 +56,63 @@ class MonitorCooldownTest(unittest.TestCase):
     def test_recovery(self) -> None:
         self.assertTrue(should_notify(False, "low", None, self.now, 360))
         self.assertFalse(should_notify(False, "ok", None, self.now, 360))
+
+
+class MonitorMessageTest(unittest.TestCase):
+    def test_title_contains_free_space(self) -> None:
+        config_text = """
+schedule: "03:00"
+timezone: "Asia/Shanghai"
+webdav:
+  url: "https://example.invalid/dav/"
+  user: "backup"
+  password: "change-me"
+  remote_path: "/backups/nas"
+notify:
+  enabled: true
+encryption:
+  enabled: false
+monitor:
+  enabled: true
+  interval: "5m"
+  min_free_gb: 99999
+  min_free_percent: 99
+  paths:
+    - name: "root"
+      path: "/"
+defaults:
+  compression: "none"
+jobs:
+  - name: "placeholder"
+    enabled: false
+    paths: ["/sources"]
+"""
+        calls = []
+
+        class FakeNotifier:
+            def __init__(self, _config):
+                pass
+
+            def send(self, status, title, message, push_to_mqtt=None):
+                calls.append((status, title, message, push_to_mqtt))
+                return True
+
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = os.path.join(directory, "config.yml")
+            with open(config_path, "w", encoding="utf-8") as handle:
+                handle.write(config_text)
+            monitor = Monitor(
+                config_path,
+                os.path.join(directory, "monitor.json"),
+            )
+            with patch("monitor.Notifier", FakeNotifier):
+                monitor.check_once()
+
+        self.assertTrue(calls)
+        status, title, message, _ = calls[0]
+        self.assertEqual(status, "warn")
+        self.assertIn("剩余", title)
+        self.assertIn("剩余", message)
 
 
 class DiskThresholdTest(unittest.TestCase):
