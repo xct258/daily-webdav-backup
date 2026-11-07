@@ -36,6 +36,26 @@ def is_low(
     )
 
 
+def should_notify(
+    low: bool,
+    previous_status: str | None,
+    last_alert: datetime | None,
+    now_dt: datetime,
+    cooldown_minutes: int,
+) -> bool:
+    """是否应该推送。
+
+    - 首次不足：推
+    - 持续不足：cooldown 到了才再推
+    - 恢复：由调用方结合 notify_recovery 决定
+    """
+    if low:
+        if previous_status != "low" or last_alert is None:
+            return True
+        return now_dt - last_alert >= timedelta(minutes=cooldown_minutes)
+    return previous_status == "low"
+
+
 @dataclass
 class DiskSnapshot:
     device: str
@@ -142,18 +162,17 @@ class Monitor:
             if last_alert is not None and last_alert.tzinfo is None:
                 last_alert = last_alert.replace(tzinfo=config.tz)
 
-            should_notify = False
-            if low:
-                if previous_status != "low" or last_alert is None:
-                    should_notify = True
-                elif now_dt - last_alert >= timedelta(
-                    minutes=monitor.cooldown_minutes
-                ):
-                    should_notify = True
-            elif previous_status == "low" and monitor.notify_recovery:
-                should_notify = True
+            notify = should_notify(
+                low,
+                previous_status,
+                last_alert,
+                now_dt,
+                monitor.cooldown_minutes,
+            )
+            if not low and not monitor.notify_recovery:
+                notify = False
 
-            if should_notify:
+            if notify:
                 self._notify(config, snapshot, min_gb, min_pct, low)
 
             filesystems[snapshot.device] = {
@@ -165,7 +184,7 @@ class Monitor:
                 "free_percent": round(snapshot.free_percent, 2),
                 "last_check": iso(now_dt),
                 "last_alert": (
-                    iso(now_dt) if should_notify and low
+                    iso(now_dt) if notify and low
                     else previous.get("last_alert")
                 ),
             }

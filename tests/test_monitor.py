@@ -4,11 +4,12 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
 from config import load_config  # noqa: E402
-from monitor import is_low  # noqa: E402
+from monitor import is_low, should_notify  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -20,6 +21,39 @@ class MonitorConfigTest(unittest.TestCase):
         self.assertEqual(
             [item.path for item in config.monitor.paths], ["/"]
         )
+
+
+class MonitorCooldownTest(unittest.TestCase):
+    now = datetime(2026, 11, 8, 12, 0, tzinfo=timezone.utc)
+
+    def test_first_low_alert(self) -> None:
+        self.assertTrue(should_notify(True, None, None, self.now, 360))
+
+    def test_low_within_six_hours(self) -> None:
+        self.assertFalse(
+            should_notify(
+                True,
+                "low",
+                self.now - timedelta(hours=1),
+                self.now,
+                360,
+            )
+        )
+
+    def test_low_after_six_hours(self) -> None:
+        self.assertTrue(
+            should_notify(
+                True,
+                "low",
+                self.now - timedelta(hours=6),
+                self.now,
+                360,
+            )
+        )
+
+    def test_recovery(self) -> None:
+        self.assertTrue(should_notify(False, "low", None, self.now, 360))
+        self.assertFalse(should_notify(False, "ok", None, self.now, 360))
 
 
 class DiskThresholdTest(unittest.TestCase):

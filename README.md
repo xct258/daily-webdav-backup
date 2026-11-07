@@ -391,7 +391,8 @@ monitor:
 - 路径不存在时跳过
 - 多个路径属于同一文件系统时按 `st_dev` 去重
 - `free_gb < min_free_gb` 或 `free_percent < min_free_percent` 时告警
-- 持续低空间按 `cooldown_minutes` 重复提醒
+- 首次低于阈值推送一次
+- 之后每 `cooldown_minutes`（默认 360 分钟 = 6 小时）如果仍然不足，再推送一次
 - 空间恢复后推送一次 `ok`
 - 状态保存在 `/data/state/monitor.json`
 - 监控线程独立运行，不阻塞备份

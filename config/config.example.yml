@@ -188,7 +188,7 @@ encryption:
 # interval：检查间隔，支持 30s / 5m / 1h
 # min_free_gb：剩余低于多少 GB 告警，0 = 不启用该规则
 # min_free_percent：剩余低于多少百分比告警，0 = 不启用
-# cooldown_minutes：持续不足时，重复告警的间隔
+# cooldown_minutes：首次告警后，持续不足时每隔多少分钟再推送；360 = 6 小时
 # notify_recovery：恢复后是否推送
 #
 # 多个路径属于同一个文件系统时会去重，只告警一次。
