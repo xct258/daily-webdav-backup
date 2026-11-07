@@ -222,7 +222,13 @@ defaults:
   archive_root: "/"
   xattrs: false
   one_file_system: false
-  # 默认不设置排除项，所有文件都会进入归档
+  # 默认不设置排除项，所有文件都会进入归档。
+  # 需要排除时改成列表，例如：
+  # exclude:
+  #   - "**/.cache/**"
+  #   - "**/node_modules/**"
+  #   - "**/*.tmp"
+  #   - "**/lost+found/**"
   exclude: []
 
 # ------------------------------------------------------------

@@ -273,7 +273,11 @@ jobs:
     zstd_level: 3
     keep_last: 7
     keep_days: 0
-    # exclude: []              # 默认不排除
+    # 默认不排除；需要时改成列表：
+    # exclude:
+    #   - "**/.cache/**"
+    #   - "**/node_modules/**"
+    #   - "**/*.tmp"
     pre_cmd: ""
     post_cmd: ""
 ```
