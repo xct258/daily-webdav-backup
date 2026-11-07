@@ -66,19 +66,19 @@ def _prepare_dirs(config: Config) -> None:
 # 命令
 # ----------------------------------------------------------------------
 def cmd_schedule(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = load_config()
     set_timezone(config)
     setup_logging(config.log_level)
     _prepare_dirs(config)
 
     stop_event = threading.Event()
     install_signal_handlers(stop_event)
-    Scheduler(args.config, stop_event).run()
+    Scheduler(None, stop_event).run()
     return 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = load_config()
     set_timezone(config)
     setup_logging(config.log_level)
     _prepare_dirs(config)
@@ -110,7 +110,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = load_config()
     set_timezone(config)
     setup_logging(config.log_level)
     _prepare_dirs(config)
@@ -179,7 +179,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_test_connection(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = load_config()
     set_timezone(config)
     setup_logging(config.log_level)
 
@@ -204,7 +204,7 @@ def cmd_health(args: argparse.Namespace) -> int:
 
 
 def cmd_list(args: argparse.Namespace) -> int:
-    config = load_config(args.config)
+    config = load_config()
     set_timezone(config)
     setup_logging(config.log_level)
 
@@ -272,31 +272,24 @@ def _print_run_result(result: RunResult) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument(
-        "--config",
-        default=None,
-        help="配置文件路径（默认 /config/config.yml）",
-    )
-
     parser = argparse.ArgumentParser(
         description="定时打包并上传到 rclone WebDAV",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("schedule", parents=[common], help="常驻调度（容器主进程）")
+    sub.add_parser("schedule", help="常驻调度（容器主进程）")
 
-    run = sub.add_parser("run", parents=[common], help="立即执行一次")
+    run = sub.add_parser("run", help="立即执行一次")
     run.add_argument("--job", action="append", help="只执行指定任务，可重复")
     run.add_argument("--dry-run", action="store_true", help="只检查，不打包不上传")
     run.add_argument("--no-upload", action="store_true", help="只打包，不上传")
     run.add_argument("--no-notify", action="store_true", help="不发送推送")
 
-    sub.add_parser("validate", parents=[common], help="校验配置和路径")
-    sub.add_parser("test-connection", parents=[common], help="测试 WebDAV 连接")
-    sub.add_parser("health", parents=[common], help="healthcheck")
+    sub.add_parser("validate", help="校验配置和路径")
+    sub.add_parser("test-connection", help="测试 WebDAV 连接")
+    sub.add_parser("health", help="healthcheck")
 
-    ls = sub.add_parser("list", parents=[common], help="列出远端归档")
+    ls = sub.add_parser("list", help="列出远端归档")
     ls.add_argument("--job", action="append", help="只看指定任务，可重复")
 
     return parser

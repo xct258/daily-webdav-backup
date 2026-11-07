@@ -74,7 +74,7 @@ services:
       # - 如果宿主机目录包含备份项目自身，请自行决定是否排除其 data/密钥
 
     healthcheck:
-      # 检查 /data/state/heartbeat 是否在 HEALTH_MAX_AGE（默认 300 秒）内更新
+      # 检查 /data/state/heartbeat 是否在 300 秒内更新
       # 只代表调度器进程活着，不代表备份成功
       test: ["CMD", "python3", "/opt/backup/main.py", "health"]
       # 每 5 分钟检查一次
