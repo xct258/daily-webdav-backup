@@ -500,7 +500,26 @@ bash check.sh
 python3 -m unittest discover -s tests -v
 ```
 
-构建由 GitHub Actions 完成，模板会校验脚本语法、配置项、Dockerfile 路径等。
+### 本地 / 测试服务器构建（推荐）
+
+```bash
+# 构建 :latest
+bash scripts/build.sh
+
+# 构建测试标签
+IMAGE=xct258/daily-webdav-backup:test bash scripts/build.sh
+
+# 不使用缓存
+NO_CACHE=1 bash scripts/build.sh
+```
+
+`template/Dockerfile` 会从 GitHub raw 下载 `app/`、`startup/` 等文件，
+所以构建前需要先 commit + push。未提交的改动不会进入镜像。
+
+### GitHub Actions（可选）
+
+Actions 页面手动触发 `Build and Push Docker Image`，适合需要多架构推送 Docker Hub 时使用。
+日常测试建议用上面的本地构建脚本，速度更快。
 
 ---
 
