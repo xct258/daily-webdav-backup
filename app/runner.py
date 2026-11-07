@@ -206,9 +206,8 @@ class Runner:
         targets = self.config.webdav.targets
 
         try:
-            self._preflight(job)
-
             if dry_run:
+                self._preflight(job)
                 target_list = ", ".join(target.path for target in targets)
                 LOG.info(
                     "[dry-run] 任务 %s：将打包 %s -> %s",
@@ -222,6 +221,7 @@ class Runner:
 
             # --no-upload 只打包，不考虑目标间隔和 pending
             if no_upload:
+                self._preflight(job)
                 pre_done = True
                 if job.pre_cmd.strip():
                     LOG.info("任务 %s 执行 pre_cmd", job.name)
@@ -303,6 +303,8 @@ class Runner:
                 return result
 
             # 3. pre_cmd + 打包（只有至少一个目标需要新归档时才做）
+            # 没到上传间隔时不会走到这里，因此不会检查源路径/磁盘。
+            self._preflight(job)
             pre_done = True
             if job.pre_cmd.strip():
                 LOG.info("任务 %s 执行 pre_cmd", job.name)
