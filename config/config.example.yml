@@ -86,11 +86,32 @@ webdav:
   user: "backup"
   password: "change-me"
   vendor: "other"
-  remote_path: "/backups/nas"
+  # 远端路径，支持一个或多个。
+  #
+  # 字符串形式（单目标，每次调度都上传）：
+  #   remote_path: "/backups/nas"
+  #
+  # 列表形式（多目标）：
+  #   - path：远端根目录
+  #   - interval：该目标的上传间隔
+  #       30m / 12h / 1d / 7d / 30d
+  #       0 或 always 表示每次调度都上传
+  #   - keep_last / keep_days：该目标自己的保留策略
+  #       不写则继承 job / defaults
+  remote_path:
+    - path: "/backups/nas"
+      interval: "1d"
+      keep_last: 7
+      keep_days: 0
+
+    - path: "/backups/nas2"
+      interval: "7d"
+      keep_last: 4
+      keep_days: 0
 
   # 远端时间目录格式，默认按天：%Y-%m-%d
   # 最终结构：
-  #   <remote_path>/<job>/<时间>/<归档>
+  #   <target.path>/<job>/<时间>/<归档>
   # 例如：
   #   backups/nas/docker/2026-11-07/docker-20261107-175000.tar.zst.age
   # 空字符串或 "none" 表示不加时间目录
@@ -226,6 +247,8 @@ defaults:
 # archive_root：归档内路径根，覆盖 defaults
 #
 # remote_path：可选，覆盖该任务的远端目录
+#   只在 webdav.remote_path 是单目标字符串时可用；
+#   多目标列表模式下不支持
 #
 # compression / zstd_level / keep_last / keep_days /
 # xattrs / one_file_system：覆盖 defaults

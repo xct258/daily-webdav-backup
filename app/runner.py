@@ -6,17 +6,17 @@ import os
 import shutil
 import threading
 import time
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
 
 import retention
 from archive import ArchiveError, ArchiveResult, create_archive, ensure_sidecar
-from config import Config, Job
+from config import Config, Job, RemoteTarget
 from notify import Notifier
 from process import CommandInterrupted, CommandTimeout, run_command
 from rclone import Rclone, RcloneError
 from state import GlobalLock, StateStore
-from util import human_size, iso, now
+from util import human_size, iso, now, parse_iso
 
 LOG = logging.getLogger("backup.runner")
 
@@ -200,47 +200,50 @@ class Runner:
         started_mono = time.monotonic()
         result = JobResult(name=job.name, status="failed")
         pre_done = False
-        pending = self.state.pending(job.name)
+        job_state = self.state.job(job.name)
+        pending = list(job_state.get("pending") or [])
+        last_upload: dict[str, str] = dict(job_state.get("last_upload") or {})
+        targets = self.config.webdav.targets
 
         try:
             self._preflight(job)
 
             if dry_run:
+                target_list = ", ".join(target.path for target in targets)
                 LOG.info(
                     "[dry-run] 任务 %s：将打包 %s -> %s",
                     job.name,
                     ", ".join(job.paths),
-                    self.config.job_remote_path(job),
+                    target_list,
                 )
                 result.status = "success"
                 result.warnings.append("dry-run：未打包、未上传")
                 return result
 
-            pre_done = True
-            if job.pre_cmd.strip():
-                LOG.info("任务 %s 执行 pre_cmd", job.name)
-                self._run_hook(job.pre_cmd, "pre", job)
-
-            run_time = now(tz)
-            archive: ArchiveResult = create_archive(
-                job, self.config, run_time, self.stop_event
-            )
-            result.archive = archive.path
-            result.size = archive.size
-            result.sha256 = archive.sha256
-            result.warnings.extend(archive.warnings)
-            ensure_sidecar(archive.path)
-
+            # --no-upload 只打包，不考虑目标间隔和 pending
             if no_upload:
+                pre_done = True
+                if job.pre_cmd.strip():
+                    LOG.info("任务 %s 执行 pre_cmd", job.name)
+                    self._run_hook(job.pre_cmd, "pre", job)
+                run_time = now(tz)
+                archive = create_archive(
+                    job, self.config, run_time, self.stop_event
+                )
+                result.archive = archive.path
+                result.size = archive.size
+                result.sha256 = archive.sha256
+                result.warnings.extend(archive.warnings)
+                ensure_sidecar(archive.path)
                 result.status = "success"
                 result.warnings.append("no-upload：归档仅保留在本地")
                 LOG.info("任务 %s 已跳过上传（no-upload）", job.name)
                 return result
 
-            uploaded = False
-
             # 1. 先重传上次失败的归档
             remaining: list[dict] = []
+            uploaded_targets: list[str] = []
+            uploaded_any = False
             for item in pending:
                 archive_path = str(item.get("archive") or "")
                 if not archive_path or not os.path.exists(archive_path):
@@ -251,7 +254,13 @@ class Runner:
                     continue
                 try:
                     remote = self._upload_item(item, job)
-                    uploaded = True
+                    uploaded_any = True
+                    uploaded_targets.append(remote)
+                    target_key = str(
+                        item.get("target") or item.get("remote_dir") or ""
+                    )
+                    if target_key:
+                        last_upload[target_key] = iso(now(tz))
                     LOG.info("待重传归档上传成功：%s", remote)
                 except (RcloneError, CommandInterrupted, CommandTimeout, OSError) as exc:
                     remaining.append(item)
@@ -263,21 +272,79 @@ class Runner:
             if self.stop_event.is_set():
                 raise CommandInterrupted()
 
-            # 2. 上传本次新归档
-            item = self._pending_item(job, archive, run_time)
-            try:
-                result.remote = self._upload_item(item, job)
-                uploaded = True
-            except (RcloneError, CommandInterrupted, CommandTimeout, OSError) as exc:
-                pending.append(item)
-                self.state.set_pending(job.name, pending)
-                raise RunnerError(f"上传失败：{exc}") from exc
+            # 2. 判断哪些目标到了上传间隔
+            run_time = now(tz)
+            pending_targets = {str(item.get("target") or "") for item in pending}
+            due: list[RemoteTarget] = []
+            for target in targets:
+                if target.path in pending_targets:
+                    continue
+                last = parse_iso(str(last_upload.get(target.path) or ""))
+                if target.interval <= 0 or last is None:
+                    due.append(target)
+                    continue
+                if last.tzinfo is None:
+                    last = last.replace(tzinfo=tz)
+                if run_time - last >= timedelta(seconds=target.interval):
+                    due.append(target)
 
-            if uploaded:
-                self._cleanup_remote(job, os.path.basename(archive.path))
+            if not due:
+                self.state.update_job(job.name, last_upload=last_upload)
+                self._cleanup_local(job, pending)
+                if pending:
+                    result.status = "failed"
+                    result.error = "仍有目标存在待重传归档"
+                elif uploaded_any:
+                    result.status = "success"
+                    result.remote = ", ".join(uploaded_targets)
+                else:
+                    result.status = "skipped"
+                    result.warnings.append("所有目标都未到上传间隔")
+                return result
 
+            # 3. pre_cmd + 打包（只有至少一个目标需要新归档时才做）
+            pre_done = True
+            if job.pre_cmd.strip():
+                LOG.info("任务 %s 执行 pre_cmd", job.name)
+                self._run_hook(job.pre_cmd, "pre", job)
+
+            archive: ArchiveResult = create_archive(
+                job, self.config, run_time, self.stop_event
+            )
+            result.archive = archive.path
+            result.size = archive.size
+            result.sha256 = archive.sha256
+            result.warnings.extend(archive.warnings)
+            ensure_sidecar(archive.path)
+
+            # 4. 上传到所有到期目标
+            failed = False
+            for target in due:
+                item = self._pending_item(job, archive, run_time, target)
+                try:
+                    remote = self._upload_item(item, job)
+                    uploaded_any = True
+                    uploaded_targets.append(remote)
+                    last_upload[target.path] = iso(now(tz))
+                    self._cleanup_remote(
+                        job, target, os.path.basename(archive.path)
+                    )
+                    LOG.info("目标 %s 上传成功：%s", target.path, remote)
+                except (RcloneError, CommandInterrupted, CommandTimeout, OSError) as exc:
+                    pending.append(item)
+                    self.state.set_pending(job.name, pending)
+                    failed = True
+                    result.warnings.append(f"目标 {target.path} 上传失败：{exc}")
+                    LOG.warning(result.warnings[-1])
+
+            self.state.update_job(job.name, last_upload=last_upload)
             self._cleanup_local(job, pending)
-            result.status = "success"
+            result.remote = ", ".join(uploaded_targets)
+            if failed:
+                result.status = "failed"
+                result.error = "部分目标上传失败"
+            else:
+                result.status = "success"
             return result
 
         except CommandInterrupted:
@@ -324,6 +391,7 @@ class Runner:
                     "last_remote": result.remote,
                     "last_error": result.error,
                     "last_duration": round(result.duration, 1),
+                    "last_upload": last_upload,
                 }
                 if result.status == "success":
                     fields["last_success"] = iso(now(tz))
@@ -385,15 +453,22 @@ class Runner:
             )
 
     def _pending_item(
-        self, job: Job, archive: ArchiveResult, when=None
+        self,
+        job: Job,
+        archive: ArchiveResult,
+        when=None,
+        target: RemoteTarget | None = None,
     ) -> dict:
+        if target is None:
+            target = self.config.webdav.targets[0]
         filename = os.path.basename(archive.path)
         return {
             "archive": archive.path,
             "filename": filename,
             "sha256_file": ensure_sidecar(archive.path),
             "size": archive.size,
-            "remote_dir": self.config.job_remote_path(job, when),
+            "remote_dir": self.config.job_remote_path(job, target, when),
+            "target": target.path,
             "created_at": iso(now(self.config.tz)),
         }
 
@@ -408,15 +483,20 @@ class Runner:
             sha_path = ensure_sidecar(archive_path)
         size = int(item.get("size") or os.path.getsize(archive_path))
         remote_dir = str(
-            item.get("remote_dir") or self.config.job_remote_path(job)
+            item.get("remote_dir")
+            or self.config.job_remote_path(job, self.config.webdav.targets[0])
         )
 
         return self.rclone.upload(archive_path, sha_path, remote_dir, filename, size)
 
-    def _cleanup_remote(self, job: Job, current_filename: str) -> None:
-        remote_dir = self.config.job_base_remote_path(job)
+    def _cleanup_remote(
+        self, job: Job, target: RemoteTarget, current_filename: str
+    ) -> None:
+        remote_dir = self.config.job_base_remote_path(job, target)
         entries = self.rclone.list_files(remote_dir, recursive=True)
-        plan = retention.remote_cleanup_plan(entries, job, now(self.config.tz))
+        keep_last, keep_days = self.config.target_retention(job, target)
+        policy = replace(job, keep_last=keep_last, keep_days=keep_days)
+        plan = retention.remote_cleanup_plan(entries, policy, now(self.config.tz))
         deleted = 0
         for relative_path in plan:
             if os.path.basename(relative_path) == current_filename:
@@ -476,11 +556,15 @@ class Runner:
         statuses = [job.status for job in jobs]
         if all(status == "success" for status in statuses):
             return "success"
-        if all(status in {"failed", "interrupted"} for status in statuses):
+        if all(status == "skipped" for status in statuses):
+            return "skipped"
+        if any(status in {"failed", "interrupted"} for status in statuses):
+            if any(status == "success" for status in statuses):
+                return "partial"
             return "failed"
         if any(status == "success" for status in statuses):
-            return "partial"
-        return "failed"
+            return "success"
+        return "skipped"
 
     def _send_notification(self, result: RunResult) -> None:
         status, title, message = self._notification(result)

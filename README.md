@@ -187,26 +187,54 @@ schedule: "03:00"
 | `user` | 是 | 用户名 |
 | `password` | 是 | 明文密码，程序自动 obscure |
 | `vendor` | 否 | 默认 `other`；Nextcloud 用 `nextcloud` |
-| `remote_path` | 是 | 远端根路径（相对 WebDAV URL），例如 `/backups/nas` |
+| `remote_path` | 是 | 远端根路径；字符串或列表 |
 | `date_format` | 否 | 时间目录格式，默认 `%Y-%m-%d`；空字符串或 `none` 关闭 |
 | `remote_name` | 否 | rclone remote 名，默认 `webdav` |
 | `rclone_config` | 否 | 默认 `/data/.rclone.conf` |
 
-每个任务默认上传到：
+### 多目标
+
+同一个 WebDAV 账号，可以配置多个远端目录：
+
+```yaml
+webdav:
+  url: "https://dav.example.com/dav/"
+  user: "backup"
+  password: "change-me"
+  remote_path:
+    - path: "/backups/nas"
+      interval: "1d"
+      keep_last: 7
+      keep_days: 0
+    - path: "/backups/nas2"
+      interval: "7d"
+      keep_last: 4
+      keep_days: 0
+```
+
+- `interval`：该目标的上传间隔，支持 `30m` / `12h` / `1d` / `7d` / `30d`；`0` 或 `always` 表示每次调度都上传
+- `keep_last` / `keep_days`：该目标自己的保留策略；不写则继承 job / defaults
+- 每次执行时，只上传到已经到间隔的目标
+- 多个目标都到期时，同一份归档上传到全部目标
+- 某个目标失败时，其他目标继续上传；失败目标进入 pending，下次重试
+- 每个目标独立执行保留清理
+
+最终目录结构：
 
 ```text
-<remote_name>:<remote_path>/<job.name>/<date_format>/<archive>
+<target.path>/<job.name>/<date_format>/<archive>
 ```
 
 例如：
 
 ```text
 backups/nas/docker/2026-11-07/docker-20261107-175000.tar.zst.age
+backups/nas2/docker/2026-11-07/docker-20261107-175000.tar.zst.age
 ```
 
 保留策略会递归扫描任务目录，因此可以跨多个时间目录执行 `keep_last` / `keep_days`。
 
-也可以在 job 里用 `remote_path` 单独覆盖任务根目录。
+> `webdav.remote_path` 配置成多个目标时，不支持 `job.remote_path` 覆盖。
 
 ### 自动发现
 
@@ -262,8 +290,9 @@ jobs:
 
 ### 保留策略
 
-- `keep_last: 7`：每个任务远端保留最近 7 份
+- `keep_last: 7`：每个任务/目标远端保留最近 7 份
 - `keep_last: 0`：不按数量清理
+- 多目标时每个目标独立执行保留清理
 - `keep_days: 30`：同时删除 30 天前的归档
 - 只处理文件名匹配 `<job>-YYYYmmdd-HHMMSS.tar.zst` 的文件，不会动其他文件
 - 上传成功后才清理
@@ -388,7 +417,7 @@ notify:
 | `WEBDAV_URL` | 配置值 | WebDAV 地址 |
 | `WEBDAV_USER` | 配置值 | 用户名 |
 | `WEBDAV_PASSWORD` | 配置值 | 密码 |
-| `WEBDAV_REMOTE_PATH` | 配置值 | 远端根路径 |
+| `WEBDAV_REMOTE_PATH` | 配置值 | 远端根路径；多个用逗号分隔（会覆盖配置文件） |
 | `WEBDAV_DATE_FORMAT` | `%Y-%m-%d` | 远端时间目录格式 |
 | `RCLONE_REMOTE` | `webdav` | rclone remote 名 |
 | `RCLONE_CONFIG` | `/data/.rclone.conf` | rclone 配置路径 |

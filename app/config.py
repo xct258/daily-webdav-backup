@@ -103,11 +103,21 @@ def normalize_schedule(value: str) -> str:
 
 
 @dataclass
+class RemoteTarget:
+    path: str
+    # 上传间隔秒数；0 表示每次调度都上传
+    interval: int = 0
+    # 可选：单独覆盖保留策略；None 表示继承 job/defaults
+    keep_last: int | None = None
+    keep_days: int | None = None
+
+
+@dataclass
 class WebDAVConfig:
     url: str
     user: str
     password: str
-    remote_path: str
+    targets: list[RemoteTarget] = field(default_factory=list)
     vendor: str = "other"
     remote_name: str = "webdav"
     rclone_config: str = "/data/.rclone.conf"
@@ -201,24 +211,42 @@ class Config:
         except ZoneInfoNotFoundError as exc:
             raise ConfigError(f"时区不存在：{self.timezone}") from exc
 
-    def job_base_remote_path(self, job: Job) -> str:
-        """任务根目录，不含时间层。"""
+    def job_base_remote_path(
+        self, job: Job, target: RemoteTarget
+    ) -> str:
+        """任务在某个目标下的根目录，不含时间层。"""
         if job.remote_path:
+            if len(self.webdav.targets) > 1:
+                raise ConfigError(
+                    f"job {job.name} 设置了 remote_path，但 webdav 配置了多个目标；"
+                    "多目标模式不支持 job.remote_path"
+                )
             return _strip_slashes(job.remote_path)
-        base = _strip_slashes(self.webdav.remote_path)
+        base = target.path
         return f"{base}/{job.name}" if base else job.name
 
-    def job_remote_path(self, job: Job, when=None) -> str:
-        """任务在远端的目录，格式：
+    def job_remote_path(
+        self, job: Job, target: RemoteTarget, when=None
+    ) -> str:
+        """任务在某个目标下的目录，格式：
 
-        <remote_path>/<job>/<date_format>/<archive>
+        <target.path>/<job>/<date_format>/<archive>
         """
-        base = self.job_base_remote_path(job)
+        base = self.job_base_remote_path(job, target)
         if not self.webdav.date_format:
             return base
         moment = when or now(self.tz)
         date_dir = moment.strftime(self.webdav.date_format).strip("/")
         return f"{base}/{date_dir}" if date_dir else base
+
+    def target_retention(self, job: Job, target: RemoteTarget) -> tuple[int, int]:
+        keep_last = (
+            target.keep_last if target.keep_last is not None else job.keep_last
+        )
+        keep_days = (
+            target.keep_days if target.keep_days is not None else job.keep_days
+        )
+        return keep_last, keep_days
 
     def enabled_jobs(self) -> list[Job]:
         return [job for job in self.jobs if job.enabled]
@@ -260,6 +288,90 @@ def _parse_defaults(data: dict) -> Defaults:
     )
 
 
+def _parse_interval(value: object) -> int:
+    """把 1d / 12h / 30m / 7d / 1（天）解析成秒。"""
+    if value is None or value == "":
+        return 0
+    text = str(value).strip().lower()
+    if text in {"0", "always", "none", "off"}:
+        return 0
+    match = re.fullmatch(r"(\d+)\s*([smhdw])", text)
+    if not match:
+        if text.isdigit():
+            return int(text) * 86400
+        raise ConfigError(
+            f"无效的 interval：{value!r}，支持 30m / 12h / 1d / 7d"
+        )
+    amount = int(match.group(1))
+    unit = match.group(2)
+    factor = {
+        "s": 1,
+        "m": 60,
+        "h": 3600,
+        "d": 86400,
+        "w": 604800,
+    }[unit]
+    return amount * factor
+
+
+def _parse_targets(data: dict) -> list[RemoteTarget]:
+    raw = data.get("remote_path")
+    if raw is None:
+        raw = data.get("paths")
+    if raw is None:
+        raise ConfigError("webdav.remote_path 不能为空")
+
+    items = raw if isinstance(raw, list) else [raw]
+    targets: list[RemoteTarget] = []
+    seen_paths: set[str] = set()
+    for item in items:
+        if isinstance(item, str):
+            path = item
+            interval = 0
+            keep_last = None
+            keep_days = None
+        elif isinstance(item, dict):
+            path = str(item.get("path") or "")
+            interval = _parse_interval(item.get("interval"))
+            keep_last_raw = item.get("keep_last")
+            keep_days_raw = item.get("keep_days")
+            keep_last = (
+                _as_int(keep_last_raw, 0, "remote_path.keep_last")
+                if keep_last_raw is not None
+                else None
+            )
+            keep_days = (
+                _as_int(keep_days_raw, 0, "remote_path.keep_days")
+                if keep_days_raw is not None
+                else None
+            )
+            if keep_last is not None and keep_last < 0:
+                raise ConfigError("remote_path.keep_last 不能为负数")
+            if keep_days is not None and keep_days < 0:
+                raise ConfigError("remote_path.keep_days 不能为负数")
+        else:
+            raise ConfigError("webdav.remote_path 的每一项必须是字符串或对象")
+
+        path = _strip_slashes(path)
+        if not path:
+            raise ConfigError("webdav.remote_path 里的路径不能为空")
+        if path in seen_paths:
+            raise ConfigError(f"webdav.remote_path 存在重复路径：{path}")
+        seen_paths.add(path)
+        targets.append(
+            RemoteTarget(
+                path=path,
+                interval=interval,
+                keep_last=keep_last,
+                keep_days=keep_days,
+            )
+        )
+
+    if not targets:
+        raise ConfigError("webdav.remote_path 至少需要一个路径")
+    return targets
+
+
 def _parse_webdav(data: dict | None) -> WebDAVConfig:
     if not isinstance(data, dict):
         raise ConfigError("缺少 webdav 配置段")
@@ -267,7 +379,6 @@ def _parse_webdav(data: dict | None) -> WebDAVConfig:
     url = str(data.get("url") or "").strip()
     user = str(data.get("user") or "").strip()
     password = str(data.get("password") or "")
-    remote_path = str(data.get("remote_path") or "").strip()
 
     if not url:
         raise ConfigError("webdav.url 不能为空")
@@ -277,8 +388,8 @@ def _parse_webdav(data: dict | None) -> WebDAVConfig:
         raise ConfigError("webdav.user 不能为空")
     if not password:
         raise ConfigError("webdav.password 不能为空")
-    if not remote_path:
-        raise ConfigError("webdav.remote_path 不能为空")
+
+    targets = _parse_targets(data)
 
     remote_name = str(data.get("remote_name") or "webdav").strip()
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", remote_name):
@@ -296,7 +407,7 @@ def _parse_webdav(data: dict | None) -> WebDAVConfig:
         url=url,
         user=user,
         password=password,
-        remote_path=_strip_slashes(remote_path),
+        targets=targets,
         vendor=vendor,
         remote_name=remote_name,
         rclone_config=_norm_path(str(data.get("rclone_config") or "/data/.rclone.conf")),
@@ -532,7 +643,13 @@ def load_config(path: str | None = None) -> Config:
     webdav.url = _env("WEBDAV_URL", webdav.url) or webdav.url
     webdav.user = _env("WEBDAV_USER", webdav.user) or webdav.user
     webdav.password = _env("WEBDAV_PASSWORD", webdav.password) or webdav.password
-    webdav.remote_path = _strip_slashes(_env("WEBDAV_REMOTE_PATH", webdav.remote_path) or "")
+    env_remote_paths = _env("WEBDAV_REMOTE_PATH")
+    if env_remote_paths:
+        webdav.targets = [
+            RemoteTarget(path=_strip_slashes(item))
+            for item in env_remote_paths.split(",")
+            if item.strip()
+        ]
     webdav.vendor = _env("WEBDAV_VENDOR", webdav.vendor) or webdav.vendor
     webdav.remote_name = _env("RCLONE_REMOTE", webdav.remote_name) or webdav.remote_name
     webdav.rclone_config = _norm_path(
@@ -549,7 +666,7 @@ def load_config(path: str | None = None) -> Config:
         raise ConfigError("WEBDAV_USER / webdav.user 不能为空")
     if not webdav.password:
         raise ConfigError("WEBDAV_PASSWORD / webdav.password 不能为空")
-    if not webdav.remote_path:
+    if not webdav.targets:
         raise ConfigError("WEBDAV_REMOTE_PATH / webdav.remote_path 不能为空")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", webdav.remote_name):
         raise ConfigError("RCLONE_REMOTE / webdav.remote_name 含有非法字符")
@@ -607,6 +724,12 @@ def load_config(path: str | None = None) -> Config:
     if not jobs:
         raise ConfigError("jobs 不能为空（或设置 auto_discover: true）")
 
+    if len(webdav.targets) > 1 and any(job.remote_path for job in jobs):
+        raise ConfigError(
+            "配置了多个 webdav.remote_path 时，不支持 job.remote_path；"
+            "请把目标写到 webdav.remote_path 列表里"
+        )
+
     # 固定使用容器内部临时目录：避免归档出现在被备份的宿主机挂载目录中，
     # 也避免 tar 读到正在生成的归档文件。
     staging_dir = "/tmp/backup-staging"
@@ -646,14 +769,40 @@ def load_config(path: str | None = None) -> Config:
     return config
 
 
+def _format_interval(seconds: int) -> str:
+    if seconds <= 0:
+        return "每次"
+    if seconds % 86400 == 0:
+        return f"{seconds // 86400}d"
+    if seconds % 3600 == 0:
+        return f"{seconds // 3600}h"
+    if seconds % 60 == 0:
+        return f"{seconds // 60}m"
+    return f"{seconds}s"
+
+
 def describe(config: Config) -> str:
     lines = [
         f"配置文件：{config.config_file}",
         f"调度：{config.schedule}（{config.timezone}）",
         f"WebDAV：{config.webdav.url}",
         f"WebDAV 用户：{config.webdav.user}",
-        f"WebDAV 远端根：{config.webdav.remote_path}",
         f"远端时间目录：{config.webdav.date_format or '关闭'}",
+        "WebDAV 目标：",
+    ]
+    for target in config.webdav.targets:
+        interval = _format_interval(target.interval)
+        keep_last = (
+            target.keep_last if target.keep_last is not None else "继承"
+        )
+        keep_days = (
+            target.keep_days if target.keep_days is not None else "继承"
+        )
+        lines.append(
+            f"  - {target.path}（间隔={interval}，"
+            f"保留={keep_last} 份 / {keep_days} 天）"
+        )
+    lines.extend([
         f"推送：{'启用' if config.notify.enabled else '关闭'} {config.notify.api_url}",
         f"staging：{config.staging_dir}（容器内部固定，不挂载）",
         f"state：{config.state_dir}",
@@ -661,7 +810,7 @@ def describe(config: Config) -> str:
         f"自动发现：{'开启' if config.auto_discover else '关闭'}"
         + (f"（{config.discover_root}）" if config.auto_discover else ""),
         "任务：",
-    ]
+    ])
     for job in config.jobs:
         status = "启用" if job.enabled else "禁用"
         lines.append(

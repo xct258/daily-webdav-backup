@@ -91,7 +91,7 @@ services:
       # WEBDAV_URL: "https://dav.example.com/dav/"
       # WEBDAV_USER: "backup"
       # WEBDAV_PASSWORD: "明文密码"
-      # WEBDAV_REMOTE_PATH: "/backups/nas"
+      # WEBDAV_REMOTE_PATH: "/backups/nas"  # 多个用逗号分隔
       # WEBDAV_VENDOR: "other"
       # 远端时间目录格式，空字符串或 none 表示关闭
       # WEBDAV_DATE_FORMAT: "%Y-%m-%d"

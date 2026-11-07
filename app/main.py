@@ -222,21 +222,26 @@ def cmd_list(args: argparse.Namespace) -> int:
         jobs = [job for job in jobs if job.name in wanted]
 
     for job in jobs:
-        remote_dir = config.job_base_remote_path(job)
-        entries = rclone.list_files(remote_dir, recursive=True)
-        print(f"\n[{job.name}] {config.webdav.remote_name}:{remote_dir}")
-        if not entries:
-            print("  （空）")
-            continue
-        for item in sorted(
-            entries, key=lambda value: str(value.get("Path") or ""), reverse=True
-        ):
-            path = str(item.get("Path") or item.get("Name") or "")
-            if path.endswith(".sha256"):
+        for target in config.webdav.targets:
+            remote_dir = config.job_base_remote_path(job, target)
+            entries = rclone.list_files(remote_dir, recursive=True)
+            print(
+                f"\n[{job.name}] {config.webdav.remote_name}:{remote_dir}"
+            )
+            if not entries:
+                print("  （空）")
                 continue
-            size = int(item.get("Size") or 0)
-            modtime = str(item.get("ModTime") or "")
-            print(f"  {path}  {human_size(size):>10}  {modtime}")
+            for item in sorted(
+                entries,
+                key=lambda value: str(value.get("Path") or ""),
+                reverse=True,
+            ):
+                path = str(item.get("Path") or item.get("Name") or "")
+                if path.endswith(".sha256"):
+                    continue
+                size = int(item.get("Size") or 0)
+                modtime = str(item.get("ModTime") or "")
+                print(f"  {path}  {human_size(size):>10}  {modtime}")
     return 0
 
 

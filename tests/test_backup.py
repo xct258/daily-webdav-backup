@@ -106,15 +106,20 @@ class RemoteLayoutTest(unittest.TestCase):
     def test_date_layer(self) -> None:
         config = load_config(os.path.join(ROOT, "config", "config.example.yml"))
         job = config.jobs[0]
+        target = config.webdav.targets[0]
         when = datetime(2026, 11, 7, 3, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
         self.assertEqual(
-            config.job_remote_path(job, when),
+            config.job_remote_path(job, target, when),
             "backups/nas/etc/2026-11-07",
         )
         self.assertEqual(
-            config.job_base_remote_path(job),
+            config.job_base_remote_path(job, target),
             "backups/nas/etc",
         )
+        self.assertEqual(len(config.webdav.targets), 2)
+        self.assertEqual(config.webdav.targets[0].interval, 86400)
+        self.assertEqual(config.webdav.targets[1].interval, 604800)
+        self.assertEqual(config.webdav.targets[1].path, "backups/nas2")
 
 
 class EncryptionTest(unittest.TestCase):
