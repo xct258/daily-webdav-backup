@@ -54,7 +54,7 @@ notify:
 
 # ------------------------------------------------------------
 # 归档加密（可选）
-#   age：推荐，公钥加密，私钥离线保存
+#   age：推荐，使用公钥加密
 #     age-keygen -o age.key
 #     把输出的 age1... 公钥填到 recipient
 #   gpg：对称密码，建议用环境变量 passphrase_env
@@ -82,11 +82,6 @@ defaults:
     - "**/node_modules/**"
     - "**/*.tmp"
     - "**/lost+found/**"
-    # 如果要备份 backup 项目自身，只排除运行时数据和私钥：
-    # - "docker/backup/data"
-    # - "docker/backup/data/**"
-    # - "docker/backup/config/age.key"
-    # - "docker/backup/config/*.key"
 
 # ------------------------------------------------------------
 # 任务列表
