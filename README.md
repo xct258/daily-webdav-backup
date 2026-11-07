@@ -5,7 +5,7 @@
 - 按 cron 定时把配置的路径打包成 `tar.zst`
 - 通过 rclone 上传到 WebDAV
 - WebDAV 地址、用户名、密码、远端路径全部写在 `config/config.yml`
-- 打包前/后可执行自定义命令（适合数据库 dump）
+- 打包前/后可执行自定义命令
 - 上传失败自动重试；容器重启后继续重传未完成的归档
 - 远端按份数/天数保留历史备份
 - 通过 MQTT 推送中心发送 Markdown 通知
@@ -246,28 +246,10 @@ jobs:
 - `archive_root` 决定归档内的路径：
   - 默认 `/`：`/sources/etc` 在归档里是 `sources/etc`
   - 设为 `/sources`：归档里是 `etc`
-- `pre_cmd` 在打包前执行，适合数据库 dump
+- `pre_cmd` 在打包前执行，可用 `$HOOK_DIR`
 - `post_cmd` 无论成功失败都会执行
 - hook 里可以使用环境变量 `JOB_NAME`、`PHASE`、`ARCHIVE_PATH`、`HOOK_DIR`
-
-数据库示例：
-
-```yaml
-  - name: "database"
-    paths:
-      - "/tmp/backup-hooks/database"
-    archive_root: "/tmp/backup-hooks"
-    pre_cmd: |
-      mkdir -p "$HOOK_DIR"
-      pg_dump -U app app > "$HOOK_DIR/app.sql"
-    post_cmd: |
-      rm -f "$HOOK_DIR/app.sql"
-```
-
-注意：hook 在容器里执行，`pg_dump` 等命令需要装进镜像。
-
-完整示例（PostgreSQL / MySQL / SQLite / Redis / MongoDB、恢复命令、注意事项）见：
-[docs/database-backup.md](docs/database-backup.md)。
+- hook 在容器里执行，所需命令需要装进镜像
 
 ### 保留策略
 
@@ -537,7 +519,7 @@ NO_CACHE=1 bash scripts/build.sh
 - 首次启动没有 `config/config.yml` 时会自动生成占位配置；占位任务禁用、推送关闭，修改后重启即可
 - 如果 `./config` 是只读挂载，自动生成会失败并停止启动，此时先在宿主机创建配置文件
 - `config.yml` 里有 WebDAV 密码，宿主机上建议 `chmod 600`
-- 归档使用 tar，不做文件系统快照；数据库请用 `pre_cmd` dump，详见 [docs/database-backup.md](docs/database-backup.md)
+- 归档使用 tar，不做文件系统快照
 - 每天全量备份会占用 `保留份数 × 单份大小` 的远端空间；数据量很大时建议改用 restic
 - WebDAV 服务器需要支持大文件上传；部分服务对单文件大小有限制
 - 首次启动如果 WebDAV 不可达，容器仍会启动，任务会按重试策略继续尝试

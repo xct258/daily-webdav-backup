@@ -20,7 +20,7 @@ from util import human_size, iso, now
 
 LOG = logging.getLogger("backup.runner")
 
-# 数据库 dump / pre_cmd / post_cmd 的临时目录，和打包 staging 分开
+# pre_cmd / post_cmd 的临时目录，和打包 staging 分开
 HOOK_BASE_DIR = "/tmp/backup-hooks"
 
 
@@ -332,7 +332,7 @@ class Runner:
     # 子步骤
     # ------------------------------------------------------------------
     def _preflight(self, job: Job) -> None:
-        # hook 目录先建好，pre_cmd 可以直接往里写 dump 文件
+        # hook 目录先建好，pre_cmd 可以直接往里写临时文件
         os.makedirs(os.path.join(HOOK_BASE_DIR, job.name), exist_ok=True)
 
         missing = [path for path in job.paths if not os.path.exists(path)]
