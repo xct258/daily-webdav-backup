@@ -178,7 +178,32 @@ encryption:
   # passphrase_env: "BACKUP_GPG_PASSPHRASE"
 
 # ------------------------------------------------------------
-# 6. 默认参数
+# 6. 磁盘空间监控
+#
+# 默认只监控容器根文件系统 /
+# 需要监控 /data、/sources/... 时在 paths 里单独添加。
+#
+# 多个路径属于同一个文件系统时会去重，只告警一次。
+# ------------------------------------------------------------
+monitor:
+  enabled: true
+  interval: "5m"
+  min_free_gb: 10
+  min_free_percent: 10
+  cooldown_minutes: 360
+  notify_recovery: true
+
+  paths:
+    - name: "root"
+      path: "/"
+
+    # 需要时再添加：
+    # - name: "data"
+    #   path: "/data"
+    #   min_free_gb: 20
+
+# ------------------------------------------------------------
+# 7. 默认参数
 #
 # compression：
 #   zstd / gzip / none
@@ -219,7 +244,7 @@ defaults:
   exclude: []
 
 # ------------------------------------------------------------
-# 7. 任务列表
+# 8. 任务列表
 #
 # 每个 job 生成一个归档，上传到：
 #   <target.path>/<时间>/<job.name>/<archive>

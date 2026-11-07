@@ -10,6 +10,7 @@
 - 远端按份数/天数保留历史备份
 - 通过 MQTT 推送中心发送 Markdown 通知
 - 可选 age / GPG 归档加密
+- 可选磁盘空间监控，低于阈值推送
 - 提供手动执行、配置校验、连接测试、远端列表、healthcheck
 
 ---
@@ -362,6 +363,50 @@ age -d -i age.key -o etc-20261107-030000.tar.zst \
 - age 私钥或 GPG 密码丢失后，备份无法恢复
 - 加密只保护归档内容，不保护 WebDAV 账号密码
 - 修改加密配置后，历史归档的扩展名和加密方式不会改变
+
+### 磁盘空间监控
+
+默认只监控容器根文件系统 `/`。需要监控数据盘时单独加路径：
+
+```yaml
+monitor:
+  enabled: true
+  interval: "5m"
+  min_free_gb: 10
+  min_free_percent: 10
+  cooldown_minutes: 360
+  notify_recovery: true
+
+  paths:
+    - name: "root"
+      path: "/"
+    # - name: "data"
+    #   path: "/data"
+    #   min_free_gb: 20
+```
+
+规则：
+
+- 不写 `paths` 时只检查 `/`
+- 路径不存在时跳过
+- 多个路径属于同一文件系统时按 `st_dev` 去重
+- `free_gb < min_free_gb` 或 `free_percent < min_free_percent` 时告警
+- 持续低空间按 `cooldown_minutes` 重复提醒
+- 空间恢复后推送一次 `ok`
+- 状态保存在 `/data/state/monitor.json`
+- 监控线程独立运行，不阻塞备份
+
+推送示例：
+
+```text
+标题：磁盘空间不足：root
+路径：/
+剩余：8.4 GB / 100 GB（8.4%）
+阈值：10 GB 或 10%
+```
+
+> 容器根 `/` 通常是 Docker data-root 所在文件系统。  
+> `/data`、`/sources/*` 可能是其它宿主机磁盘，需要时在 `monitor.paths` 中单独添加。
 
 ### 推送
 

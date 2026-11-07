@@ -65,6 +65,15 @@ def _as_int(value: object, default: int, name: str) -> int:
         raise ConfigError(f"{name} 必须是整数，当前值：{value!r}") from exc
 
 
+def _as_float(value: object, default: float, name: str) -> float:
+    if value is None or value == "":
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ConfigError(f"{name} 必须是数字，当前值：{value!r}") from exc
+
+
 def _norm_path(value: str) -> str:
     value = str(value).strip()
     if not value:
@@ -148,6 +157,25 @@ class EncryptionConfig:
 
 
 @dataclass
+class MonitorPath:
+    name: str
+    path: str
+    min_free_gb: float | None = None
+    min_free_percent: float | None = None
+
+
+@dataclass
+class MonitorConfig:
+    enabled: bool = False
+    interval: int = 300
+    min_free_gb: float = 10
+    min_free_percent: float = 10
+    cooldown_minutes: int = 360
+    notify_recovery: bool = True
+    paths: list[MonitorPath] = field(default_factory=list)
+
+
+@dataclass
 class Defaults:
     compression: str = "zstd"
     zstd_level: int = 3
@@ -187,6 +215,7 @@ class Config:
     defaults: Defaults
     jobs: list[Job]
     encryption: EncryptionConfig = field(default_factory=EncryptionConfig)
+    monitor: MonitorConfig = field(default_factory=MonitorConfig)
     auto_discover: bool = False
     discover_root: str = "/sources"
     staging_dir: str = "/tmp/backup-staging"
@@ -617,6 +646,97 @@ def _parse_encryption(data: dict | None) -> EncryptionConfig:
     )
 
 
+def _parse_monitor(data: dict | None) -> MonitorConfig:
+    raw = data or {}
+    if not isinstance(raw, dict):
+        raise ConfigError("monitor 必须是对象")
+
+    enabled = _as_bool(raw.get("enabled"), False)
+    interval = _parse_interval(raw.get("interval") or "5m")
+    if interval <= 0:
+        raise ConfigError("monitor.interval 必须大于 0")
+
+    min_free_gb = _as_float(
+        raw.get("min_free_gb"), 10.0, "monitor.min_free_gb"
+    )
+    min_free_percent = _as_float(
+        raw.get("min_free_percent"), 10.0, "monitor.min_free_percent"
+    )
+    if min_free_gb < 0:
+        raise ConfigError("monitor.min_free_gb 不能为负数")
+    if not (0 <= min_free_percent <= 100):
+        raise ConfigError("monitor.min_free_percent 必须在 0-100 之间")
+
+    cooldown_minutes = _as_int(
+        raw.get("cooldown_minutes"), 360, "monitor.cooldown_minutes"
+    )
+    if cooldown_minutes < 0:
+        raise ConfigError("monitor.cooldown_minutes 不能为负数")
+
+    paths_raw = raw.get("paths")
+    paths: list[MonitorPath] = []
+    if paths_raw:
+        if not isinstance(paths_raw, list):
+            raise ConfigError("monitor.paths 必须是数组")
+        for item in paths_raw:
+            if isinstance(item, str):
+                path = _norm_path(item)
+                name = path
+                path_gb = None
+                path_pct = None
+            elif isinstance(item, dict):
+                path = _norm_path(str(item.get("path") or ""))
+                name = str(item.get("name") or path)
+                path_gb = (
+                    _as_float(
+                        item.get("min_free_gb"),
+                        0,
+                        f"monitor.paths[{path}].min_free_gb",
+                    )
+                    if item.get("min_free_gb") is not None
+                    else None
+                )
+                path_pct = (
+                    _as_float(
+                        item.get("min_free_percent"),
+                        0,
+                        f"monitor.paths[{path}].min_free_percent",
+                    )
+                    if item.get("min_free_percent") is not None
+                    else None
+                )
+                if path_gb is not None and path_gb < 0:
+                    raise ConfigError("monitor.paths.min_free_gb 不能为负数")
+                if path_pct is not None and not (0 <= path_pct <= 100):
+                    raise ConfigError(
+                        "monitor.paths.min_free_percent 必须在 0-100 之间"
+                    )
+            else:
+                raise ConfigError("monitor.paths 的每一项必须是字符串或对象")
+            paths.append(
+                MonitorPath(
+                    name=name,
+                    path=path,
+                    min_free_gb=path_gb,
+                    min_free_percent=path_pct,
+                )
+            )
+
+    # 默认只看容器根文件系统
+    if not paths:
+        paths = [MonitorPath(name="root", path="/")]
+
+    return MonitorConfig(
+        enabled=enabled,
+        interval=interval,
+        min_free_gb=min_free_gb,
+        min_free_percent=min_free_percent,
+        cooldown_minutes=cooldown_minutes,
+        notify_recovery=_as_bool(raw.get("notify_recovery"), True),
+        paths=paths,
+    )
+
+
 def load_config(path: str | None = None) -> Config:
     config_file = path or "/config/config.yml"
     assert config_file is not None
@@ -702,6 +822,7 @@ def load_config(path: str | None = None) -> Config:
     notify.on_success_mqtt = _env_bool("PUSH_ON_SUCCESS", notify.on_success_mqtt)
     notify.on_failure_mqtt = _env_bool("PUSH_ON_FAILURE", notify.on_failure_mqtt)
     encryption = _parse_encryption(data.get("encryption"))
+    monitor = _parse_monitor(data.get("monitor"))
     if notify.enabled and not notify.api_url:
         raise ConfigError("notify.enabled=true 时 notify.api_url 不能为空")
     if notify.enabled and not notify.server_name:
@@ -752,6 +873,7 @@ def load_config(path: str | None = None) -> Config:
         defaults=defaults,
         jobs=jobs,
         encryption=encryption,
+        monitor=monitor,
         auto_discover=auto_discover,
         discover_root=discover_root,
         staging_dir=staging_dir,
@@ -814,6 +936,13 @@ def describe(config: Config) -> str:
         f"staging：{config.staging_dir}（容器内部固定，不挂载）",
         f"state：{config.state_dir}",
         f"加密：{'开启（' + config.encryption.method + '）' if config.encryption.enabled else '关闭'}",
+        "监控："
+        + (
+            f"开启（间隔={_format_interval(config.monitor.interval)}，"
+            f"{len(config.monitor.paths)} 个路径）"
+            if config.monitor.enabled
+            else "关闭"
+        ),
         f"自动发现：{'开启' if config.auto_discover else '关闭'}"
         + (f"（{config.discover_root}）" if config.auto_discover else ""),
         "任务：",

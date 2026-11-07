@@ -20,8 +20,18 @@ class Notifier:
             return self.config.on_success_mqtt
         return self.config.on_failure_mqtt
 
-    def send(self, status: str, title: str, message: str) -> bool:
-        """status 必须是 ok / warn / error / info；失败只告警，不影响备份。"""
+    def send(
+        self,
+        status: str,
+        title: str,
+        message: str,
+        push_to_mqtt: bool | None = None,
+    ) -> bool:
+        """status 必须是 ok / warn / error / info；失败只告警，不影响备份。
+
+        push_to_mqtt 为空时按状态使用 on_success_mqtt / on_failure_mqtt；
+        显式传入时以传入值为准。
+        """
         if not self.config.enabled:
             LOG.debug("推送未启用，跳过")
             return False
@@ -35,7 +45,11 @@ class Notifier:
             "title": title,
             "message": message,
             "status": status,
-            "push_to_mqtt": self._push_to_mqtt(status),
+            "push_to_mqtt": (
+                self._push_to_mqtt(status)
+                if push_to_mqtt is None
+                else push_to_mqtt
+            ),
             "msg_type": "markdown",
             "mode": self.config.mode,
         }

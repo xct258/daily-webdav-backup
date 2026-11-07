@@ -64,6 +64,7 @@ app_files=(
     retention.py
     state.py
     notify.py
+    monitor.py
     process.py
     util.py
 )

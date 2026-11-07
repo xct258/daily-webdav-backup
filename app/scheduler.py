@@ -10,6 +10,7 @@ from datetime import datetime
 from croniter import croniter
 
 from config import Config, ConfigError, load_config
+from monitor import Monitor
 from runner import Runner
 from state import Heartbeat, StateStore
 from util import iso, now, parse_iso
@@ -23,6 +24,7 @@ class Scheduler:
         self.stop_event = stop_event
         self.state: StateStore | None = None
         self.heartbeat: Heartbeat | None = None
+        self.monitor: Monitor | None = None
 
     def run(self) -> None:
         config = load_config(self.config_path)
@@ -34,6 +36,13 @@ class Scheduler:
             os.path.join(config.state_dir, "heartbeat"), interval=30
         )
         self.heartbeat.start()
+
+        self.monitor = Monitor(
+            config.config_file,
+            os.path.join(config.state_dir, "monitor.json"),
+            self.stop_event,
+        )
+        self.monitor.start()
 
         try:
             LOG.info(
@@ -68,6 +77,8 @@ class Scheduler:
 
                 self._execute(config)
         finally:
+            if self.monitor is not None:
+                self.monitor.stop()
             if self.heartbeat is not None:
                 self.heartbeat.stop()
             LOG.info("调度器已退出")
