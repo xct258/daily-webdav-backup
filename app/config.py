@@ -165,6 +165,8 @@ class Config:
     notify: NotifyConfig
     defaults: Defaults
     jobs: list[Job]
+    auto_discover: bool = False
+    discover_root: str = "/sources"
     staging_dir: str = "/data/staging"
     state_dir: str = "/data/state"
     lock_file: str = "/data/.backup.lock"
@@ -371,6 +373,65 @@ def _parse_job(raw: dict, defaults: Defaults) -> Job:
     )
 
 
+def _discover_jobs(
+    root: str,
+    defaults: Defaults,
+    manual_jobs: list[Job],
+) -> list[Job]:
+    """把 discover_root 下的每个一级子目录自动变成一个任务。
+
+    同名的手动任务优先，可以用于禁用/覆盖某个自动发现的任务。
+    """
+    if not os.path.isdir(root):
+        raise ConfigError(
+            f"auto_discover=true，但 discover_root 不存在或不是目录：{root}"
+        )
+
+    manual_names = {job.name for job in manual_jobs}
+    discovered: list[Job] = []
+
+    try:
+        entries = sorted(os.scandir(root), key=lambda entry: entry.name)
+    except OSError as exc:
+        raise ConfigError(f"扫描 discover_root 失败：{root}（{exc}）") from exc
+
+    for entry in entries:
+        if not entry.is_dir(follow_symlinks=False):
+            continue
+        name = entry.name
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+            raise ConfigError(
+                f"自动发现的任务名不合法：{name!r}；"
+                "只允许字母、数字、下划线、点和横线，请改名或改用手动 jobs"
+            )
+        if name in manual_names:
+            # 手动任务同名时优先，可以用于 enabled: false 或自定义排除
+            continue
+        discovered.append(
+            Job(
+                name=name,
+                paths=[os.path.normpath(entry.path)],
+                enabled=True,
+                compression=defaults.compression,
+                zstd_level=defaults.zstd_level,
+                keep_last=defaults.keep_last,
+                keep_days=defaults.keep_days,
+                exclude=list(defaults.exclude),
+                xattrs=defaults.xattrs,
+                one_file_system=defaults.one_file_system,
+                archive_root=root,
+            )
+        )
+
+    if not discovered and not manual_jobs:
+        raise ConfigError(
+            f"auto_discover=true，但 {root} 下没有可备份的子目录；"
+            f"请在 compose 里把宿主机目录挂载到 {root}/<名字>，例如：- /etc:{root}/etc:ro"
+        )
+
+    return manual_jobs + discovered
+
+
 def load_config(path: str | None = None) -> Config:
     config_file = path or _env("CONFIG_FILE", "/config/config.yml")
     assert config_file is not None
@@ -451,13 +512,29 @@ def load_config(path: str | None = None) -> Config:
     if notify.enabled and not notify.server_name:
         raise ConfigError("notify.enabled=true 时 notify.server_name 不能为空")
 
+    auto_discover = _env_bool(
+        "AUTO_DISCOVER", _as_bool(data.get("auto_discover"), False)
+    )
+    discover_root = _norm_path(
+        _env("DISCOVER_ROOT", str(data.get("discover_root") or "/sources"))
+        or "/sources"
+    )
+
     jobs_raw = data.get("jobs")
-    if not isinstance(jobs_raw, list) or not jobs_raw:
-        raise ConfigError("jobs 不能为空")
+    if jobs_raw is None:
+        jobs_raw = []
+    if not isinstance(jobs_raw, list):
+        raise ConfigError("jobs 必须是数组")
     jobs = [_parse_job(item, defaults) for item in jobs_raw]
     names = [job.name for job in jobs]
     if len(names) != len(set(names)):
         raise ConfigError("job.name 不能重复")
+
+    if auto_discover:
+        jobs = _discover_jobs(discover_root, defaults, jobs)
+
+    if not jobs:
+        raise ConfigError("jobs 不能为空（或设置 auto_discover: true）")
 
     staging_dir = _norm_path(_env("STAGING_DIR", "/data/staging") or "/data/staging")
     state_dir = _norm_path(_env("STATE_DIR", "/data/state") or "/data/state")
@@ -471,6 +548,8 @@ def load_config(path: str | None = None) -> Config:
         notify=notify,
         defaults=defaults,
         jobs=jobs,
+        auto_discover=auto_discover,
+        discover_root=discover_root,
         staging_dir=staging_dir,
         state_dir=state_dir,
         lock_file=lock_file,
@@ -503,6 +582,8 @@ def describe(config: Config) -> str:
         f"推送：{'启用' if config.notify.enabled else '关闭'} {config.notify.api_url}",
         f"staging：{config.staging_dir}",
         f"state：{config.state_dir}",
+        f"自动发现：{'开启' if config.auto_discover else '关闭'}"
+        + (f"（{config.discover_root}）" if config.auto_discover else ""),
         "任务：",
     ]
     for job in config.jobs:

@@ -34,10 +34,11 @@ services:
       - ./config:/config
       - ./data:/data
       # 要备份的宿主机目录：取消注释并改成实际路径
-      # 左边是宿主机路径，右边是 config.yml 里 paths 写的容器路径
+      # 推荐挂到 /sources/<名字>，config.yml 里开启 auto_discover 后自动成为任务：
       # - /etc:/sources/etc:ro
       # - /opt/appdata:/sources/appdata:ro
       # - /var/www:/sources/www:ro
+      # 也可以不用自动发现，在 config.yml 的 jobs.paths 里手动写容器路径
 
     healthcheck:
       test: ["CMD", "python3", "/opt/backup/main.py", "health"]

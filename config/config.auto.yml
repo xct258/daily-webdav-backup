@@ -8,6 +8,10 @@
 schedule: "0 3 * * *"
 timezone: "Asia/Shanghai"
 
+# 占位配置不自动发现；修改好 WebDAV 后可以改成 true
+auto_discover: false
+discover_root: "/sources"
+
 # 占位 WebDAV：修改成你的真实地址、用户名、密码、远端路径
 webdav:
   url: "https://example.invalid/dav/"

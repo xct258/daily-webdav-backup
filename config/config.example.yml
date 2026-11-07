@@ -10,6 +10,19 @@ schedule: "0 3 * * *"
 timezone: "Asia/Shanghai"
 
 # ------------------------------------------------------------
+# 自动发现（推荐）
+#   true 时扫描 discover_root 下的每个一级子目录，自动生成任务：
+#     /sources/etc      -> 任务 etc
+#     /sources/appdata  -> 任务 appdata
+#   compose 里只需要挂载：
+#     - /etc:/sources/etc:ro
+#     - /opt/appdata:/sources/appdata:ro
+#   开启后 jobs 可以留空；同名的手动任务优先，可用于覆盖/禁用。
+# ------------------------------------------------------------
+auto_discover: false
+discover_root: "/sources"
+
+# ------------------------------------------------------------
 # WebDAV（rclone 的 webdav backend）
 #   password 写明文即可，程序启动时会自动用 rclone obscure 处理
 #   也可以用 ${WEBDAV_PASSWORD} 引用环境变量

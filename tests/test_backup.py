@@ -32,6 +32,75 @@ class AutoConfigTest(unittest.TestCase):
         self.assertTrue(all(not job.enabled for job in config.jobs))
 
 
+class AutoDiscoverTest(unittest.TestCase):
+    def test_discover_subdirectories(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, "etc"))
+            os.makedirs(os.path.join(root, "appdata"))
+            with open(os.path.join(root, "ignore.txt"), "w") as handle:
+                handle.write("x")
+
+            config_path = os.path.join(root, "config.yml")
+            with open(config_path, "w", encoding="utf-8") as handle:
+                handle.write(
+                    f"""
+schedule: "03:00"
+timezone: "UTC"
+auto_discover: true
+discover_root: "{root}"
+webdav:
+  url: "https://example.com/dav/"
+  user: "u"
+  password: "p"
+  remote_path: "/r"
+notify:
+  enabled: false
+defaults:
+  compression: "none"
+"""
+                )
+
+            config = load_config(config_path)
+            self.assertEqual({job.name for job in config.jobs}, {"etc", "appdata"})
+            self.assertTrue(all(job.enabled for job in config.jobs))
+            self.assertTrue(all(job.archive_root == root for job in config.jobs))
+
+    def test_manual_job_can_override_discovered(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, "etc"))
+            os.makedirs(os.path.join(root, "appdata"))
+            config_path = os.path.join(root, "config.yml")
+            with open(config_path, "w", encoding="utf-8") as handle:
+                handle.write(
+                    f"""
+schedule: "03:00"
+timezone: "UTC"
+auto_discover: true
+discover_root: "{root}"
+webdav:
+  url: "https://example.com/dav/"
+  user: "u"
+  password: "p"
+  remote_path: "/r"
+notify:
+  enabled: false
+defaults:
+  compression: "none"
+jobs:
+  - name: "etc"
+    enabled: false
+    paths:
+      - "/tmp"
+"""
+                )
+
+            config = load_config(config_path)
+            jobs = {job.name: job for job in config.jobs}
+            self.assertIn("etc", jobs)
+            self.assertFalse(jobs["etc"].enabled)
+            self.assertTrue(jobs["appdata"].enabled)
+
+
 class RetentionTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tz = ZoneInfo("Asia/Shanghai")

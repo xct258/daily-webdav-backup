@@ -100,18 +100,46 @@ webdav:
 
 ### 3. 配置要备份的目录
 
-修改 `docker-compose.yml` 的 `volumes`，把宿主机目录挂到 `/sources/...`：
+Docker 必须先知道“宿主机路径挂到容器哪里”，所以 compose 里的 volume 映射是省不掉的。
+但推荐开启**自动发现**，这样 `config.yml` 里就不用再写一遍容器路径。
+
+修改 `docker-compose.yml` 的 `volumes`：
 
 ```yaml
     volumes:
-      - ./config:/config:ro
+      - ./config:/config
       - ./data:/data
       - /etc:/sources/etc:ro
       - /opt/appdata:/sources/appdata:ro
       - /var/www:/sources/www:ro
 ```
 
-然后在 `config.yml` 的 `jobs` 里写容器内路径：
+然后在 `config.yml` 里只写：
+
+```yaml
+auto_discover: true
+discover_root: "/sources"
+# jobs 可以省略
+```
+
+程序会自动把 `/sources` 下的每个一级子目录变成一个任务：
+
+```text
+/sources/etc      -> 任务 etc
+/sources/appdata  -> 任务 appdata
+/sources/www      -> 任务 www
+```
+
+每个任务生成一个归档，上传到：
+
+```text
+<remote_path>/<任务名>/
+```
+
+如果某个目录需要单独的排除规则、保留策略、`pre_cmd` 等，再写手动 job。
+同名的手动 job 会覆盖自动发现的任务，也可以用来禁用某个目录。
+
+手动模式示例（`auto_discover: false`）：
 
 ```yaml
 jobs:
@@ -169,6 +197,28 @@ schedule: "03:00"
 ```
 
 也可以在 job 里用 `remote_path` 单独覆盖。
+
+### 自动发现
+
+```yaml
+auto_discover: true
+discover_root: "/sources"
+```
+
+规则：
+
+- 只扫描 `discover_root` 的**一级子目录**
+- 每个子目录自动生成一个任务，任务名 = 目录名
+- 任务路径 = 该子目录，`archive_root` = `discover_root`
+- 继承 `defaults` 里的压缩、保留、排除规则
+- 目录名只能包含字母、数字、下划线、点、横线
+- 同名的手动 job 优先，可以用来单独配置或禁用某个目录
+- `discover_root` 不存在、没有子目录时会直接报配置错误
+
+优点：宿主机路径只需要在 `docker-compose.yml` 里写一次。
+
+限制：自动发现的任务都用 `defaults`，不能单独写 `pre_cmd` / `post_cmd`。
+需要这些能力时，把手动 job 写成同名即可覆盖。
 
 ### 任务
 
@@ -265,6 +315,8 @@ notify:
 | `CONFIG_FILE` | `/config/config.yml` | 配置文件 |
 | `TZ` / `TIMEZONE` | 配置里的 `timezone` | 时区 |
 | `SCHEDULE` | 配置里的 `schedule` | cron |
+| `AUTO_DISCOVER` | 配置里的 `auto_discover` | 是否自动发现 `/sources` 子目录 |
+| `DISCOVER_ROOT` | `/sources` | 自动发现的根目录 |
 | `WEBDAV_URL` | 配置值 | WebDAV 地址 |
 | `WEBDAV_USER` | 配置值 | 用户名 |
 | `WEBDAV_PASSWORD` | 配置值 | 密码 |
