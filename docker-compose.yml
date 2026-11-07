@@ -50,72 +50,8 @@ services:
       # Python 输出不缓冲，日志实时写入
       PYTHONUNBUFFERED: "1"
 
-      # ------------------------------------------------------
-      # 以下变量都可以不写，优先在 config/config.yml 里配置。
-      # 这里列出来是为了临时覆盖，不需要的保持注释即可。
-      # ------------------------------------------------------
-
-      # 启动失败后重试次数：0 = 不重试，直接 sleep infinity 停住
-      # STARTUP_RETRY: "0"
-      # 每次重试前等待秒数
-      # STARTUP_RETRY_DELAY: "5"
-
-      # 调度覆盖
-      # SCHEDULE: "0 3 * * *"
-      # TIMEZONE: "Asia/Shanghai"
-      # 启动时发现错过计划点是否补跑
-      # RUN_MISSED: "true"
-      # 第一次启动且没有历史记录时是否立即跑一次
-      # RUN_ON_FIRST_START: "true"
-
-      # 任务失败重试
-      # RETRY_COUNT: "1"
-      # RETRY_DELAY: "300"
-
-      # rclone 限速，例如 10M、1G；留空不限速
-      # BWLIMIT: "10M"
-      # staging 最低剩余空间（GB），低于此值任务失败
-      # MIN_FREE_GB: "5"
-      # 上传成功后本地 staging 保留份数，0 = 删除
-      # LOCAL_KEEP: "0"
-      # pre_cmd / post_cmd 单个 hook 超时秒数
-      # HOOK_TIMEOUT: "300"
-      # 是否用 tar -tf 校验归档
-      # VERIFY_ARCHIVE: "false"
-
-      # 自动发现：扫描 DISCOVER_ROOT 下的一级子目录，每个子目录一个任务
-      # AUTO_DISCOVER: "true"
-      # DISCOVER_ROOT: "/sources"
-
-      # WebDAV 覆盖（也可以写在 config.yml 的 webdav 段）
-      # WEBDAV_URL: "https://dav.example.com/dav/"
-      # WEBDAV_USER: "backup"
-      # WEBDAV_PASSWORD: "明文密码"
-      # WEBDAV_REMOTE_PATH: "/backups/nas"  # 多个用逗号分隔
-      # WEBDAV_VENDOR: "other"
-      # 远端时间目录格式，空字符串或 none 表示关闭
-      # WEBDAV_DATE_FORMAT: "%Y-%m-%d"
-      # RCLONE_REMOTE: "webdav"
-      # RCLONE_CONFIG: "/data/.rclone.conf"
-
-      # 加密覆盖（也可以写在 config.yml 的 encryption 段）
-      # ENCRYPTION_ENABLED: "true"
-      # ENCRYPTION_METHOD: "age"
-      # AGE_RECIPIENT: "age1..."
-      # ENCRYPTION_PASSPHRASE: "gpg 对称密码"
-      # ENCRYPTION_PASSPHRASE_ENV: "BACKUP_GPG_PASSPHRASE"
-
-      # 推送覆盖（也可以写在 config.yml 的 notify 段）
-      # PUSH_ENABLED: "true"
-      # PUSH_API_URL: "https://push-server.o1-1.xct258.top/api/push"
-      # PUSH_SERVER_NAME: "nas-backup"
-      # PUSH_TOPIC: "backup/webdav"
-      # PUSH_ON_SUCCESS: "false"
-      # PUSH_ON_FAILURE: "true"
-
-      # 状态和健康检查
-      # STATE_DIR: "/data/state"
-      # HEALTH_MAX_AGE: "300"
+      # 备份参数（调度、WebDAV、推送、加密、保留、重试等）
+      # 统一在 config/config.yml 中配置，compose 不再提供覆盖项。
 
     volumes:
       # 配置目录。

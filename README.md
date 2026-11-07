@@ -407,47 +407,21 @@ notify:
 
 ---
 
-## 环境变量
+## 容器级环境变量
 
-配置文件里的值都可以用环境变量覆盖：
+备份参数全部在 `config/config.yml` 中配置，compose 不再提供覆盖项。  
+compose 只保留必要的容器级变量：
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `CONFIG_FILE` | `/config/config.yml` | 配置文件 |
-| `TZ` / `TIMEZONE` | 配置里的 `timezone` | 时区 |
-| `SCHEDULE` | 配置里的 `schedule` | cron |
-| `AUTO_DISCOVER` | 配置里的 `auto_discover` | 是否自动发现 `/sources` 子目录 |
-| `DISCOVER_ROOT` | `/sources` | 自动发现的根目录 |
-| `WEBDAV_URL` | 配置值 | WebDAV 地址 |
-| `WEBDAV_USER` | 配置值 | 用户名 |
-| `WEBDAV_PASSWORD` | 配置值 | 密码 |
-| `WEBDAV_REMOTE_PATH` | 配置值 | 远端根路径；多个用逗号分隔（会覆盖配置文件） |
-| `WEBDAV_DATE_FORMAT` | `%Y-%m-%d` | 远端时间目录格式 |
-| `RCLONE_REMOTE` | `webdav` | rclone remote 名 |
-| `RCLONE_CONFIG` | `/data/.rclone.conf` | rclone 配置路径 |
-| `ENCRYPTION_ENABLED` | 配置值 | 是否加密归档 |
-| `ENCRYPTION_METHOD` | `age` | `age` / `gpg` |
-| `AGE_RECIPIENT` | 配置值 | age 公钥 |
-| `ENCRYPTION_PASSPHRASE` | 空 | gpg 对称密码 |
-| `ENCRYPTION_PASSPHRASE_ENV` | `BACKUP_GPG_PASSPHRASE` | gpg 密码所在环境变量名 |
+| `CONFIG_FILE` | `/config/config.yml` | 配置文件路径 |
+| `TZ` | `Asia/Shanghai` | 容器系统时区；调度以 config.yml 的 `timezone` 为准 |
+| `LOG_BASE_DIR` | `/data/logs` | 日志根目录 |
 | `STATE_DIR` | `/data/state` | 状态目录 |
-| `RUN_MISSED` | `true` | 启动补跑 |
-| `RUN_ON_FIRST_START` | `true` | 第一次启动立即跑 |
-| `RETRY_COUNT` | `1` | 单任务重试次数 |
-| `RETRY_DELAY` | `300` | 重试间隔秒数 |
-| `BWLIMIT` | 空 | rclone 限速，如 `10M` |
-| `MIN_FREE_GB` | `5` | staging 最低剩余空间 |
-| `LOCAL_KEEP` | `0` | 上传成功后本地保留份数 |
-| `HOOK_TIMEOUT` | `300` | 单个 hook 超时秒数 |
-| `VERIFY_ARCHIVE` | `false` | 是否用 `tar -tf` 校验归档 |
-| `PUSH_API_URL` | 配置值 | 推送地址 |
-| `PUSH_SERVER_NAME` | 配置值 | 来源服务器 |
-| `PUSH_TOPIC` | 配置值 | MQTT 主题 |
-| `PUSH_ENABLED` | `true` | 是否启用推送 |
-| `PUSH_ON_SUCCESS` | `false` | 成功是否推 MQTT |
-| `PUSH_ON_FAILURE` | `true` | 失败是否推 MQTT |
-| `LOG_LEVEL` | `INFO` | 日志级别 |
 | `HEALTH_MAX_AGE` | `300` | 心跳最大秒数 |
+| `PYTHONUNBUFFERED` | `1` | Python 输出不缓冲 |
+
+`STARTUP_RETRY` / `STARTUP_RETRY_DELAY` 由模板启动脚本使用，默认 `0` / `5`，一般不需要设置。
 
 > 临时归档固定使用容器内部的 `/tmp/backup-staging`，不能通过环境变量修改，也不要挂载它。  
 > 打包和上传都在容器内完成，上传成功后自动删除。容器重建后 `/tmp` 会清空，未完成的上传会丢失；`docker restart` 不受影响。
