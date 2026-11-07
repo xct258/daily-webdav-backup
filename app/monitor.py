@@ -175,6 +175,8 @@ class Monitor:
             if notify:
                 self._notify(config, snapshot, min_gb, min_pct, low)
 
+            used = max(0, snapshot.total - snapshot.free)
+            used_percent = max(0.0, 100.0 - snapshot.free_percent)
             filesystems[snapshot.device] = {
                 "name": snapshot.name,
                 "path": snapshot.path,
@@ -182,6 +184,8 @@ class Monitor:
                 "total": snapshot.total,
                 "free": snapshot.free,
                 "free_percent": round(snapshot.free_percent, 2),
+                "used": used,
+                "used_percent": round(used_percent, 2),
                 "last_check": iso(now_dt),
                 "last_alert": (
                     iso(now_dt) if notify and low
@@ -191,21 +195,25 @@ class Monitor:
 
             if low:
                 LOG.warning(
-                    "磁盘空间不足：%s %s 剩余 %s / %s（%.1f%%）",
+                    "磁盘空间不足：%s %s 可用 %s / 总量 %s"
+                    "（剩余 %.1f%%，已用 %s）",
                     snapshot.name,
                     snapshot.path,
                     human_size(snapshot.free),
                     human_size(snapshot.total),
                     snapshot.free_percent,
+                    human_size(used),
                 )
             else:
                 LOG.info(
-                    "磁盘空间正常：%s %s 剩余 %s / %s（%.1f%%）",
+                    "磁盘空间正常：%s %s 可用 %s / 总量 %s"
+                    "（剩余 %.1f%%，已用 %s）",
                     snapshot.name,
                     snapshot.path,
                     human_size(snapshot.free),
                     human_size(snapshot.total),
                     snapshot.free_percent,
+                    human_size(used),
                 )
 
         state["last_check"] = iso(now_dt)
@@ -240,25 +248,33 @@ class Monitor:
         min_pct: float,
         low: bool,
     ) -> None:
+        used = max(0, snapshot.total - snapshot.free)
+        used_percent = max(0.0, 100.0 - snapshot.free_percent)
         space = (
-            f"{human_size(snapshot.free)} / {human_size(snapshot.total)}"
-            f"（{snapshot.free_percent:.1f}%）"
+            f"可用 {human_size(snapshot.free)} / 总量 "
+            f"{human_size(snapshot.total)}（剩余 {snapshot.free_percent:.1f}%）"
         )
         if low:
-            title = f"磁盘空间不足：{snapshot.name}，剩余 {space}"
+            title = f"磁盘空间不足：{snapshot.name}，{space}"
             status = "warn"
             message = (
                 f"**路径**：`{snapshot.path}`\n\n"
-                f"**剩余**：{space}\n\n"
+                f"**可用**：{human_size(snapshot.free)}\n\n"
+                f"**已用**：{human_size(used)}（{used_percent:.1f}%）\n\n"
+                f"**总量**：{human_size(snapshot.total)}\n\n"
+                f"**剩余比例**：{snapshot.free_percent:.1f}%\n\n"
                 f"**阈值**：{min_gb:g} GB 或 {min_pct:g}%"
             )
             push = None
         else:
-            title = f"磁盘空间恢复：{snapshot.name}，剩余 {space}"
+            title = f"磁盘空间恢复：{snapshot.name}，{space}"
             status = "ok"
             message = (
                 f"**路径**：`{snapshot.path}`\n\n"
-                f"**当前剩余**：{space}"
+                f"**可用**：{human_size(snapshot.free)}\n\n"
+                f"**已用**：{human_size(used)}（{used_percent:.1f}%）\n\n"
+                f"**总量**：{human_size(snapshot.total)}\n\n"
+                f"**剩余比例**：{snapshot.free_percent:.1f}%"
             )
             # 恢复通知默认也推到 MQTT，不受 on_success_mqtt 影响
             push = True

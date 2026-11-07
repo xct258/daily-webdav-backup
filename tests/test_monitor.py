@@ -111,8 +111,11 @@ jobs:
         self.assertTrue(calls)
         status, title, message, _ = calls[0]
         self.assertEqual(status, "warn")
+        self.assertIn("可用", title)
         self.assertIn("剩余", title)
-        self.assertIn("剩余", message)
+        self.assertIn("可用", message)
+        self.assertIn("已用", message)
+        self.assertIn("总量", message)
 
 
 class DiskThresholdTest(unittest.TestCase):
