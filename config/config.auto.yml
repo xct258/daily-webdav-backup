@@ -1,0 +1,47 @@
+# ============================================================
+# 自动生成的占位配置
+#   容器首次启动时如果找不到 config.yml，会复制本文件。
+#   请修改 WebDAV 信息和 jobs 后执行：
+#     docker compose restart
+# ============================================================
+
+schedule: "0 3 * * *"
+timezone: "Asia/Shanghai"
+
+# 占位 WebDAV：修改成你的真实地址、用户名、密码、远端路径
+webdav:
+  url: "https://example.invalid/dav/"
+  user: "backup"
+  password: "change-me"
+  vendor: "other"
+  remote_path: "/backups/nas"
+
+# 占位配置先关闭推送，避免误发
+notify:
+  enabled: false
+  api_url: "https://push-server.o1-1.xct258.top/api/push"
+  server_name: "nas-backup"
+  category: "service"
+  topic: "backup/webdav"
+  mode: "append"
+  on_success_mqtt: false
+  on_failure_mqtt: true
+
+defaults:
+  compression: "zstd"
+  zstd_level: 3
+  keep_last: 7
+  keep_days: 0
+  archive_root: "/"
+  exclude:
+    - "**/.cache/**"
+    - "**/node_modules/**"
+    - "**/*.tmp"
+
+# 占位任务默认禁用；改成 enabled: true 并修改 paths
+jobs:
+  - name: "placeholder"
+    enabled: false
+    paths:
+      - "/sources"
+    archive_root: "/"

@@ -30,7 +30,8 @@ services:
       # PUSH_ON_FAILURE: "true"
 
     volumes:
-      - ./config:/config:ro
+      # 首次启动时如果 config/config.yml 不存在，容器会自动生成占位配置
+      - ./config:/config
       - ./data:/data
       # 要备份的宿主机目录：取消注释并改成实际路径
       # 左边是宿主机路径，右边是 config.yml 里 paths 写的容器路径

@@ -11,7 +11,9 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
 import retention  # noqa: E402
-from config import Job, normalize_schedule  # noqa: E402
+from config import Job, load_config, normalize_schedule  # noqa: E402
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
 class ScheduleTest(unittest.TestCase):
@@ -20,6 +22,14 @@ class ScheduleTest(unittest.TestCase):
 
     def test_cron_form(self) -> None:
         self.assertEqual(normalize_schedule("0 */6 * * *"), "0 */6 * * *")
+
+
+class AutoConfigTest(unittest.TestCase):
+    def test_auto_config_is_safe_placeholder(self) -> None:
+        config = load_config(os.path.join(ROOT, "config", "config.auto.yml"))
+        self.assertFalse(config.notify.enabled)
+        self.assertTrue(config.jobs)
+        self.assertTrue(all(not job.enabled for job in config.jobs))
 
 
 class RetentionTest(unittest.TestCase):

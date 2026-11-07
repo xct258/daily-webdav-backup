@@ -29,7 +29,8 @@
 │   ├── notify.py             # MQTT 推送中心
 │   └── process.py            # 子进程管理
 ├── config/
-│   └── config.example.yml    # 配置模板
+│   ├── config.example.yml    # 完整配置示例
+│   └── config.auto.yml       # 首次启动自动生成的占位配置
 ├── install/
 │   ├── app.conf              # 镜像名、依赖
 │   ├── install.sh            # 模板自带
@@ -68,6 +69,13 @@
 ```bash
 cp config/config.example.yml config/config.yml
 ```
+
+如果跳过这一步，容器首次启动会自动从 `config.auto.yml` 生成一个占位 `config/config.yml`：
+
+- 占位任务默认 `enabled: false`，不会真的备份
+- 推送默认关闭，避免误发
+- 修改 WebDAV 和 `jobs` 后执行 `docker compose restart`
+- 自动生成要求 `./config` 挂载为可写（默认 compose 已改成 `./config:/config`）
 
 修改 `config/config.yml` 的 `webdav`：
 
@@ -363,6 +371,8 @@ python3 -m unittest discover -s tests -v
 ## 注意事项
 
 - 容器以 root 运行，才能读取任意挂载路径；源目录建议全部 `:ro`
+- 首次启动没有 `config/config.yml` 时会自动生成占位配置；占位任务禁用、推送关闭，修改后重启即可
+- 如果 `./config` 是只读挂载，自动生成会失败并停止启动，此时先在宿主机创建配置文件
 - `config.yml` 里有 WebDAV 密码，宿主机上建议 `chmod 600`
 - 归档使用 tar，不做文件系统快照；数据库请用 `pre_cmd` dump
 - 每天全量备份会占用 `保留份数 × 单份大小` 的远端空间；数据量很大时建议改用 restic

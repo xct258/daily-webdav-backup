@@ -78,7 +78,11 @@ echo "[custom] 下载 config/config.example.yml"
 curl -fsSL --retry 3 --retry-delay 5 \
     "${base}/config/config.example.yml" -o /opt/backup/config.example.yml
 
-chmod 644 /opt/backup/*.py /opt/backup/config.example.yml
+echo "[custom] 下载 config/config.auto.yml"
+curl -fsSL --retry 3 --retry-delay 5 \
+    "${base}/config/config.auto.yml" -o /opt/backup/config.auto.yml
+
+chmod 644 /opt/backup/*.py /opt/backup/config.example.yml /opt/backup/config.auto.yml
 
 # ------------------------------------------------------------
 # 自检
