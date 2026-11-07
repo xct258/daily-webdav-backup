@@ -1,48 +1,168 @@
+# ============================================================
+# Docker Compose 部署配置
+#
+# 使用步骤：
+#   1. 修改 install/app.conf 的 IMAGE_REPO，并同步修改下面的 image
+#   2. 构建镜像：
+#        bash scripts/build.sh
+#      或使用 GitHub Actions 发布的生产镜像
+#   3. 准备 config/config.yml（不存在时容器会自动生成占位配置）
+#   4. 按需取消注释下面 volumes 里要备份的宿主机目录
+#   5. docker compose up -d
+#
+# 修改 volumes 后必须重新创建容器：
+#   docker compose up -d --force-recreate
+# 只执行 docker compose restart 不会应用新的挂载。
+# ============================================================
+
 services:
   backup:
-    # 与 install/app.conf 的 IMAGE_REPO:IMAGE_TAG 保持一致
+    # 镜像名必须与 install/app.conf 的 IMAGE_REPO:IMAGE_TAG 一致
     image: xct258/daily-webdav-backup:latest
+
+    # 容器名，docker exec / docker logs 时使用
     container_name: daily-backup
+
+    # 进程退出后自动拉起；docker stop 后不会自动拉起
     restart: unless-stopped
+
+    # 使用 tini 回收 tar / rclone 产生的孤儿进程
     init: true
-    # 停止时给调度器/ tar / rclone 收尾的时间
+
+    # Docker 停止容器时最多等待的时间
+    # 调度器内部会给 tar/rclone 45 秒收尾，再被 Docker 强制结束
     stop_grace_period: 90s
 
+    # 本容器只需要主动访问 WebDAV，不需要 host 网络
+    # 如果确实需要 host 网络，取消下面注释，并注释掉 ports（当前没有 ports）
+    # network_mode: host
+
     environment:
+      # 时区：影响 cron 调度、日志时间、归档文件名
       TZ: Asia/Shanghai
+
+      # 配置文件路径（对应下面的 ./config:/config）
       CONFIG_FILE: /config/config.yml
+
+      # 日志根目录（对应 ./data:/data）
       LOG_BASE_DIR: /data/logs
+
+      # Python 输出不缓冲，日志实时写入
       PYTHONUNBUFFERED: "1"
-      # 以下都可以不写，直接在 config/config.yml 里配置
+
+      # ------------------------------------------------------
+      # 以下变量都可以不写，优先在 config/config.yml 里配置。
+      # 这里列出来是为了临时覆盖，不需要的保持注释即可。
+      # ------------------------------------------------------
+
+      # 启动失败后重试次数：0 = 不重试，直接 sleep infinity 停住
+      # STARTUP_RETRY: "0"
+      # 每次重试前等待秒数
+      # STARTUP_RETRY_DELAY: "5"
+
+      # 调度覆盖
       # SCHEDULE: "0 3 * * *"
+      # TIMEZONE: "Asia/Shanghai"
+      # 启动时发现错过计划点是否补跑
       # RUN_MISSED: "true"
+      # 第一次启动且没有历史记录时是否立即跑一次
       # RUN_ON_FIRST_START: "true"
+
+      # 任务失败重试
       # RETRY_COUNT: "1"
       # RETRY_DELAY: "300"
+
+      # rclone 限速，例如 10M、1G；留空不限速
       # BWLIMIT: "10M"
+      # staging 最低剩余空间（GB），低于此值任务失败
       # MIN_FREE_GB: "5"
+      # 上传成功后本地 staging 保留份数，0 = 删除
       # LOCAL_KEEP: "0"
+      # pre_cmd / post_cmd 单个 hook 超时秒数
+      # HOOK_TIMEOUT: "300"
+      # 是否用 tar -tf 校验归档
+      # VERIFY_ARCHIVE: "false"
+
+      # 自动发现：扫描 DISCOVER_ROOT 下的一级子目录，每个子目录一个任务
+      # AUTO_DISCOVER: "true"
+      # DISCOVER_ROOT: "/sources"
+
+      # WebDAV 覆盖（也可以写在 config.yml 的 webdav 段）
+      # WEBDAV_URL: "https://dav.example.com/dav/"
+      # WEBDAV_USER: "backup"
       # WEBDAV_PASSWORD: "明文密码"
+      # WEBDAV_REMOTE_PATH: "/backups/nas"
+      # WEBDAV_VENDOR: "other"
+      # RCLONE_REMOTE: "webdav"
+      # RCLONE_CONFIG: "/data/.rclone.conf"
+
+      # 加密覆盖（也可以写在 config.yml 的 encryption 段）
+      # ENCRYPTION_ENABLED: "true"
+      # ENCRYPTION_METHOD: "age"
+      # AGE_RECIPIENT: "age1..."
+      # ENCRYPTION_PASSPHRASE: "gpg 对称密码"
+      # ENCRYPTION_PASSPHRASE_ENV: "BACKUP_GPG_PASSPHRASE"
+
+      # 推送覆盖（也可以写在 config.yml 的 notify 段）
+      # PUSH_ENABLED: "true"
       # PUSH_API_URL: "https://push-server.o1-1.xct258.top/api/push"
       # PUSH_SERVER_NAME: "nas-backup"
       # PUSH_TOPIC: "backup/webdav"
       # PUSH_ON_SUCCESS: "false"
       # PUSH_ON_FAILURE: "true"
 
+      # 状态和健康检查
+      # STATE_DIR: "/data/state"
+      # HEALTH_MAX_AGE: "300"
+
     volumes:
-      # 首次启动时如果 config/config.yml 不存在，容器会自动生成占位配置
+      # 配置目录。
+      # - config/config.yml 不存在时，prepare.sh 会自动生成占位配置
+      # - 自动生成要求该目录可写；如果希望只读，请先在宿主机创建好 config.yml
+      # - config.yml 里有 WebDAV 密码，注意权限，不要提交到 Git
       - ./config:/config
+
+      # 运行数据：state、logs、健康心跳。
+      # 不包含 staging；staging 固定使用容器内部 /tmp/backup-staging。
       - ./data:/data
-      # 要备份的宿主机目录：取消注释并改成实际路径
-      # 推荐挂到 /sources/<名字>，config.yml 里开启 auto_discover 后自动成为任务：
+
+      # ------------------------------------------------------
+      # 要备份的宿主机目录
+      #
+      # 推荐挂到 /sources/<名字>，并在 config.yml 里开启：
+      #   auto_discover: true
+      #   discover_root: "/sources"
+      #
+      # 这样每个一级子目录会自动变成一个任务：
+      #   /sources/etc      -> 任务 etc
+      #   /sources/appdata  -> 任务 appdata
+      #
+      # 源目录建议全部加 :ro，避免备份程序误修改数据。
+      # ------------------------------------------------------
       # - /etc:/sources/etc:ro
       # - /opt/appdata:/sources/appdata:ro
       # - /var/www:/sources/www:ro
-      # 也可以不用自动发现，在 config.yml 的 jobs.paths 里手动写容器路径
+      # - /home/xct258/docker:/sources/docker:ro
+
+      # 注意：
+      # - 不要挂载 /tmp/backup-staging，它必须只存在于容器内部
+      # - 不要把备份项目自己的 data/staging 挂载进来
+      # - 如果宿主机目录包含备份项目自身，请自行决定是否排除其 data/密钥
 
     healthcheck:
+      # 检查 /data/state/heartbeat 是否在 HEALTH_MAX_AGE（默认 300 秒）内更新
+      # 只代表调度器进程活着，不代表备份成功
       test: ["CMD", "python3", "/opt/backup/main.py", "health"]
+      # 每 5 分钟检查一次
       interval: 5m
+      # 单次检查超过 10 秒算失败
       timeout: 10s
+      # 连续失败 3 次才标记 unhealthy
       retries: 3
+      # 启动后 2 分钟内的失败不计入重试次数
       start_period: 2m
+
+    # 本容器不需要对外提供服务，所以没有 ports。
+    # 如果以后增加 Web UI，再按需添加：
+    # ports:
+    #   - "8080:8080"

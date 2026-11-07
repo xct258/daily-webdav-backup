@@ -1,26 +1,43 @@
 # ============================================================
 # 自动生成的占位配置
-#   容器首次启动时如果找不到 config.yml，会复制本文件。
-#   请修改 WebDAV 信息和 jobs 后执行：
-#     docker compose restart
+#
+# 容器首次启动时如果找不到 config/config.yml，会复制本文件。
+# 修改完成后执行：
+#   docker compose restart
+#
+# 这是占位配置：
+#   - WebDAV 是假地址
+#   - 任务默认禁用
+#   - 推送默认关闭
+# 修改好真实信息后再启用任务。
 # ============================================================
 
+# 调度：每天 03:00；也可以写 "03:00"
 schedule: "0 3 * * *"
+# 时区：影响 cron、日志和归档文件名
 timezone: "Asia/Shanghai"
 
-# 占位配置不自动发现；修改好 WebDAV 后可以改成 true
+# 自动发现：true 时把 /sources 下每个一级子目录变成一个任务
+# 挂载示例：
+#   - /etc:/sources/etc:ro
+#   - /opt/appdata:/sources/appdata:ro
 auto_discover: false
 discover_root: "/sources"
 
-# 占位 WebDAV：修改成你的真实地址、用户名、密码、远端路径
+# WebDAV 连接信息
+# url / user / password / remote_path 必须改成真实值
 webdav:
   url: "https://example.invalid/dav/"
   user: "backup"
   password: "change-me"
+  # vendor 常用值：other / nextcloud / owncloud / infinitescale / fastmail
   vendor: "other"
+  # 远端根路径，下面按任务名分子目录
   remote_path: "/backups/nas"
 
-# 占位配置先关闭推送，避免误发
+# 消息推送
+# enabled: false 时完全不推送
+# on_success_mqtt: false 表示成功只保存记录，不推手机
 notify:
   enabled: false
   api_url: "https://push-server.o1-1.xct258.top/api/push"
@@ -31,24 +48,34 @@ notify:
   on_success_mqtt: false
   on_failure_mqtt: true
 
-# 占位配置默认不加密；配置 age 公钥后改成 enabled: true
+# 归档加密
+# method: age / gpg
+# age 需要 recipient 公钥；gpg 需要 passphrase 或 passphrase_env
 encryption:
   enabled: false
   method: "age"
   recipient: ""
 
+# 默认参数，可被每个 job 覆盖
 defaults:
+  # zstd / gzip / none
   compression: "zstd"
+  # zstd 等级 1-22
   zstd_level: 3
+  # 每个任务远端保留最近 N 份；0 = 不按数量清理
   keep_last: 7
+  # 远端按天数清理；0 = 不按天数清理
   keep_days: 0
+  # 归档内路径相对这个目录
   archive_root: "/"
+  # GNU tar 排除规则，相对于 archive_root
   exclude:
     - "**/.cache/**"
     - "**/node_modules/**"
     - "**/*.tmp"
 
-# 占位任务默认禁用；改成 enabled: true 并修改 paths
+# 占位任务：默认禁用
+# 修改 enabled: true 和 paths 后才会真正备份
 jobs:
   - name: "placeholder"
     enabled: false
