@@ -1,0 +1,85 @@
+# ============================================================
+# 备份任务配置
+#   复制为 config/config.yml 后修改
+#   WebDAV 地址、用户名、密码、远端路径都在这里配置
+# ============================================================
+
+# 调度：标准 5 段 cron，或 "03:00" 这种每天一次的简写
+# 注意：时间按 timezone 计算
+schedule: "0 3 * * *"
+timezone: "Asia/Shanghai"
+
+# ------------------------------------------------------------
+# WebDAV（rclone 的 webdav backend）
+#   password 写明文即可，程序启动时会自动用 rclone obscure 处理
+#   也可以用 ${WEBDAV_PASSWORD} 引用环境变量
+# ------------------------------------------------------------
+webdav:
+  url: "https://dav.example.com/dav/"
+  user: "backup"
+  password: "change-me"
+  vendor: "other"          # Nextcloud 用 nextcloud，其他一般用 other
+  remote_path: "/backups/nas"
+  # remote_name: "webdav"  # rclone remote 名，默认 webdav
+  # rclone_config: "/data/.rclone.conf"
+
+# ------------------------------------------------------------
+# 消息推送：MQTT 推送中心
+#   status: ok / warn / error / info
+#   on_success_mqtt=false 表示成功只保存记录，不推手机
+# ------------------------------------------------------------
+notify:
+  enabled: true
+  api_url: "https://push-server.o1-1.xct258.top/api/push"
+  server_name: "nas-backup"
+  category: "service"      # service / todo
+  topic: "backup/webdav"
+  mode: "append"           # append / overwrite
+  on_success_mqtt: false
+  on_failure_mqtt: true
+  timeout: 10
+
+# ------------------------------------------------------------
+# 默认参数，可被每个 job 覆盖
+# ------------------------------------------------------------
+defaults:
+  compression: "zstd"      # zstd / gzip / none
+  zstd_level: 3
+  keep_last: 7             # 每个任务远端保留最近 N 份，0 = 不按数量清理
+  keep_days: 0             # >0 时同时按天数清理
+  archive_root: "/"        # 归档内路径相对此目录
+  xattrs: false
+  one_file_system: false
+  exclude:
+    - "**/.cache/**"
+    - "**/node_modules/**"
+    - "**/*.tmp"
+    - "**/lost+found/**"
+
+# ------------------------------------------------------------
+# 任务列表
+#   paths 是容器内路径；宿主机目录通过 compose 挂载到 /sources/...
+#   archive_root 默认 /，所以 /sources/etc 在归档里是 sources/etc
+#   设置 archive_root: /sources 后，归档里就是 etc
+# ------------------------------------------------------------
+jobs:
+  - name: "etc"
+    enabled: true
+    paths:
+      - "/sources/etc"
+    archive_root: "/sources"
+
+  - name: "appdata"
+    enabled: true
+    paths:
+      - "/sources/appdata"
+      - "/sources/www"
+    archive_root: "/sources"
+    # remote_path: "/backups/nas/appdata"   # 可选：覆盖该任务的远端目录
+    exclude:
+      - "**/cache/**"
+    # 打包前执行，适合数据库 dump；输出到 /data/staging/hooks/<job>/
+    # 记得把该目录也加进 paths
+    pre_cmd: ""
+    # 打包后执行，无论成功失败都会执行
+    post_cmd: ""

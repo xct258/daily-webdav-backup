@@ -1,0 +1,46 @@
+services:
+  backup:
+    # 与 install/app.conf 的 IMAGE_REPO:IMAGE_TAG 保持一致
+    image: xct258/daily-webdav-backup:latest
+    container_name: daily-backup
+    restart: unless-stopped
+    init: true
+    # 停止时给调度器/ tar / rclone 收尾的时间
+    stop_grace_period: 90s
+
+    environment:
+      TZ: Asia/Shanghai
+      CONFIG_FILE: /config/config.yml
+      LOG_BASE_DIR: /data/logs
+      PYTHONUNBUFFERED: "1"
+      # 以下都可以不写，直接在 config/config.yml 里配置
+      # SCHEDULE: "0 3 * * *"
+      # RUN_MISSED: "true"
+      # RUN_ON_FIRST_START: "true"
+      # RETRY_COUNT: "1"
+      # RETRY_DELAY: "300"
+      # BWLIMIT: "10M"
+      # MIN_FREE_GB: "5"
+      # LOCAL_KEEP: "0"
+      # WEBDAV_PASSWORD: "明文密码"
+      # PUSH_API_URL: "https://push-server.o1-1.xct258.top/api/push"
+      # PUSH_SERVER_NAME: "nas-backup"
+      # PUSH_TOPIC: "backup/webdav"
+      # PUSH_ON_SUCCESS: "false"
+      # PUSH_ON_FAILURE: "true"
+
+    volumes:
+      - ./config:/config:ro
+      - ./data:/data
+      # 要备份的宿主机目录：取消注释并改成实际路径
+      # 左边是宿主机路径，右边是 config.yml 里 paths 写的容器路径
+      # - /etc:/sources/etc:ro
+      # - /opt/appdata:/sources/appdata:ro
+      # - /var/www:/sources/www:ro
+
+    healthcheck:
+      test: ["CMD", "python3", "/opt/backup/main.py", "health"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 2m

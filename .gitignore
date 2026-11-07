@@ -1,0 +1,10 @@
+# 本地实际配置（含 WebDAV 密码），不要提交
+config/config.yml
+
+# 运行数据
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/

@@ -1,0 +1,86 @@
+# ============================================================
+# 构建镜像并推送 Docker Hub
+#   配置来源: install/app.conf
+#   触发方式: 仅手动（Actions 页面 → Run workflow）
+#   推送一个标签: <repo>:<IMAGE_TAG>（app.conf 里配置，默认 latest）
+#   所需 Secrets: DOCKERACC（账号）/ DOCKERPWD（密码或 Access Token）
+#   下载地址固定到当前提交 SHA（raw 的分支地址有 CDN 缓存，可能拿到旧文件）
+# ============================================================
+name: Build and Push Docker Image
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: image-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # ------------------------------------------------------------
+      # 构建前校验：必备文件 + 配置文件语法
+      # ------------------------------------------------------------
+      - name: Validate config files
+        run: bash check.sh
+
+      # ------------------------------------------------------------
+      # 读取 install/app.conf，输出到 GITHUB_OUTPUT 供后续步骤使用
+      # ------------------------------------------------------------
+      - name: Read install/app.conf
+        id: conf
+        run: |
+          set -euo pipefail
+          source install/app.conf
+          {
+            echo "image_repo=${IMAGE_REPO:-xct258/my-image}"
+            echo "image_tag=${IMAGE_TAG:-latest}"
+            echo "platforms=${PLATFORMS:-linux/amd64}"
+          } >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------
+      # 检查 Docker Hub 凭据是否已配置（未配置时给出明确提示）
+      # ------------------------------------------------------------
+      - name: Check Docker Hub secrets
+        env:
+          DOCKERACC: ${{ secrets.DOCKERACC }}
+          DOCKERPWD: ${{ secrets.DOCKERPWD }}
+        run: |
+          [ -n "${DOCKERACC:-}" ] || { echo "错误：未配置 Secrets → DOCKERACC" >&2; exit 1; }
+          [ -n "${DOCKERPWD:-}" ] || { echo "错误：未配置 Secrets → DOCKERPWD" >&2; exit 1; }
+          echo "Secrets 校验通过"
+
+      # ------------------------------------------------------------
+      # 多架构构建准备：QEMU 模拟 + buildx
+      # ------------------------------------------------------------
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERACC }}
+          password: ${{ secrets.DOCKERPWD }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: template/Dockerfile
+          push: true
+          # 不使用任何构建缓存，每次构建全新执行，保证下载最新文件
+          no-cache: true
+          platforms: ${{ steps.conf.outputs.platforms }}
+          build-args: |
+            REPO_URL=https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}
+          tags: ${{ steps.conf.outputs.image_repo }}:${{ steps.conf.outputs.image_tag }}
