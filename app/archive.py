@@ -192,6 +192,10 @@ def _encrypt_archive(
             "--symmetric",
             "--cipher-algo",
             "AES256",
+            # AEAD/OCB：加密 + 完整性校验（需要 GPG >= 2.2.21 解密）
+            "--force-aead",
+            # 不让 gpg-agent 缓存对称密码
+            "--no-symkey-cache",
             "--output",
             encrypted_path,
             plain_path,

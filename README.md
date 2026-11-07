@@ -360,6 +360,9 @@ environment:
 
 也可以直接写 `passphrase`，但不推荐。
 
+GPG 默认使用 **AES256-OCB（AEAD）**，并禁用 gpg-agent 的对称密码缓存。  
+解密需要 GnuPG >= 2.2.21；更老的 GPG 无法解密 OCB 归档。
+
 恢复：
 
 ```bash
