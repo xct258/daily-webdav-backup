@@ -82,6 +82,11 @@ defaults:
     - "**/node_modules/**"
     - "**/*.tmp"
     - "**/lost+found/**"
+    # 如果要备份 backup 项目自身，只排除运行时数据和私钥：
+    # - "docker/backup/data"
+    # - "docker/backup/data/**"
+    # - "docker/backup/config/age.key"
+    # - "docker/backup/config/*.key"
 
 # ------------------------------------------------------------
 # 任务列表

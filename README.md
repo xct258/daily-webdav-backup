@@ -269,6 +269,47 @@ jobs:
 完整示例（PostgreSQL / MySQL / SQLite / Redis / MongoDB、恢复命令、注意事项）见：
 [docs/database-backup.md](docs/database-backup.md)。
 
+### 备份项目自身
+
+备份项目本身也需要备份，方便灾难恢复。  
+现在 staging 固定在容器内部 `/tmp/backup-staging`，所以不会再出现“打包自己正在写的归档”的问题。
+
+推荐只排除运行时数据和私钥，保留 compose 和配置：
+
+```yaml
+defaults:
+  exclude:
+    - "**/.cache/**"
+    - "**/*.tmp"
+    # 备份项目自身：排除运行时数据和私钥
+    - "docker/backup/data"
+    - "docker/backup/data/**"
+    - "docker/backup/config/age.key"
+    - "docker/backup/config/*.key"
+```
+
+这样归档里会包含：
+
+```text
+docker/backup/docker-compose.yml
+docker/backup/config/config.yml
+```
+
+不会包含：
+
+```text
+docker/backup/data/          # state、logs 等运行时数据
+docker/backup/config/age.key # 加密私钥
+```
+
+注意：
+
+- 上面的路径是相对于 `archive_root` 的，示例中 `archive_root: "/sources"`，所以是 `docker/backup/...`
+- `config/config.yml` 里有 WebDAV 密码，**开启归档加密后再把它打进去**
+- age 私钥不要放进备案归档，单独离线保存；否则加密没有意义
+- 使用 GPG 时，密码不要写进归档
+- 如果不想备份配置里的敏感信息，也可以排除 `docker/backup/config/config.yml`，单独保存一份
+
 ### 保留策略
 
 - `keep_last: 7`：每个任务远端保留最近 7 份
