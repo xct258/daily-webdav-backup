@@ -53,6 +53,20 @@ notify:
   timeout: 10
 
 # ------------------------------------------------------------
+# 归档加密（可选）
+#   age：推荐，公钥加密，私钥离线保存
+#     age-keygen -o age.key
+#     把输出的 age1... 公钥填到 recipient
+#   gpg：对称密码，建议用环境变量 passphrase_env
+# ------------------------------------------------------------
+encryption:
+  enabled: false
+  method: "age"            # age / gpg
+  recipient: ""            # age 公钥 age1...
+  # passphrase: ""         # gpg 密码，不推荐直接写配置文件
+  # passphrase_env: "BACKUP_GPG_PASSPHRASE"
+
+# ------------------------------------------------------------
 # 默认参数，可被每个 job 覆盖
 # ------------------------------------------------------------
 defaults:
@@ -91,7 +105,7 @@ jobs:
     # remote_path: "/backups/nas/appdata"   # 可选：覆盖该任务的远端目录
     exclude:
       - "**/cache/**"
-    # 打包前执行，适合数据库 dump；输出到 /data/staging/hooks/<job>/
+    # 打包前执行，适合数据库 dump；输出到 /tmp/backup-staging/hooks/<job>/
     # 记得把该目录也加进 paths
     pre_cmd: ""
     # 打包后执行，无论成功失败都会执行

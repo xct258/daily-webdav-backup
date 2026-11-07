@@ -9,6 +9,7 @@
 - 上传失败自动重试；容器重启后继续重传未完成的归档
 - 远端按份数/天数保留历史备份
 - 通过 MQTT 推送中心发送 Markdown 通知
+- 可选 age / GPG 归档加密
 - 提供手动执行、配置校验、连接测试、远端列表、healthcheck
 
 ---
@@ -254,8 +255,8 @@ jobs:
 ```yaml
   - name: "database"
     paths:
-      - "/data/staging/hooks/database"
-    archive_root: "/data/staging/hooks"
+      - "/tmp/backup-staging/hooks/database"
+    archive_root: "/tmp/backup-staging/hooks"
     pre_cmd: |
       mkdir -p "$HOOK_DIR"
       pg_dump -U app app > "$HOOK_DIR/app.sql"
@@ -276,6 +277,79 @@ jobs:
 - 只处理文件名匹配 `<job>-YYYYmmdd-HHMMSS.tar.zst` 的文件，不会动其他文件
 - 上传成功后才清理
 - 本地 staging 默认上传成功后删除；失败的归档保留，下次重传
+
+### 加密
+
+加密发生在 tar 打包之后、上传之前。上传到 WebDAV 的是密文：
+
+```text
+etc-20261107-030000.tar.zst.age
+etc-20261107-030000.tar.zst.age.sha256
+```
+
+`.sha256` 校验的是**加密后的文件**。
+
+#### age（推荐）
+
+镜像内置 `age`。在宿主机或离线环境生成密钥：
+
+```bash
+age-keygen -o age.key
+```
+
+会输出公钥，类似：
+
+```text
+Public key: age1...
+```
+
+把公钥写进配置，私钥 `age.key` 离线保存，不要上传：
+
+```yaml
+encryption:
+  enabled: true
+  method: "age"
+  recipient: "age1..."
+```
+
+恢复：
+
+```bash
+sha256sum -c etc-20261107-030000.tar.zst.age.sha256
+age -d -i age.key -o etc-20261107-030000.tar.zst \
+  etc-20261107-030000.tar.zst.age
+tar -tf etc-20261107-030000.tar.zst
+```
+
+#### GPG 对称加密
+
+```yaml
+encryption:
+  enabled: true
+  method: "gpg"
+  passphrase_env: "BACKUP_GPG_PASSPHRASE"
+```
+
+compose：
+
+```yaml
+environment:
+  BACKUP_GPG_PASSPHRASE: "你的加密密码"
+```
+
+也可以直接写 `passphrase`，但不推荐。
+
+恢复：
+
+```bash
+gpg -d etc-20261107-030000.tar.zst.gpg > etc-20261107-030000.tar.zst
+```
+
+注意：
+
+- age 私钥或 GPG 密码丢失后，备份无法恢复
+- 加密只保护归档内容，不保护 WebDAV 账号密码
+- 修改加密配置后，历史归档的扩展名和加密方式不会改变
 
 ### 推送
 
@@ -326,7 +400,11 @@ notify:
 | `WEBDAV_REMOTE_PATH` | 配置值 | 远端根路径 |
 | `RCLONE_REMOTE` | `webdav` | rclone remote 名 |
 | `RCLONE_CONFIG` | `/data/.rclone.conf` | rclone 配置路径 |
-| `STAGING_DIR` | `/data/staging` | 临时归档目录 |
+| `ENCRYPTION_ENABLED` | 配置值 | 是否加密归档 |
+| `ENCRYPTION_METHOD` | `age` | `age` / `gpg` |
+| `AGE_RECIPIENT` | 配置值 | age 公钥 |
+| `ENCRYPTION_PASSPHRASE` | 空 | gpg 对称密码 |
+| `ENCRYPTION_PASSPHRASE_ENV` | `BACKUP_GPG_PASSPHRASE` | gpg 密码所在环境变量名 |
 | `STATE_DIR` | `/data/state` | 状态目录 |
 | `RUN_MISSED` | `true` | 启动补跑 |
 | `RUN_ON_FIRST_START` | `true` | 第一次启动立即跑 |
@@ -345,6 +423,9 @@ notify:
 | `PUSH_ON_FAILURE` | `true` | 失败是否推 MQTT |
 | `LOG_LEVEL` | `INFO` | 日志级别 |
 | `HEALTH_MAX_AGE` | `300` | 心跳最大秒数 |
+
+> 临时归档固定使用 `/tmp/backup-staging`，不能通过环境变量修改。  
+> 这样归档不会出现在被备份的宿主机挂载目录中。容器重建后 `/tmp` 会清空，未完成的上传会丢失；`docker restart` 不受影响。
 
 ---
 
@@ -433,4 +514,4 @@ python3 -m unittest discover -s tests -v
 - 每天全量备份会占用 `保留份数 × 单份大小` 的远端空间；数据量很大时建议改用 restic
 - WebDAV 服务器需要支持大文件上传；部分服务对单文件大小有限制
 - 首次启动如果 WebDAV 不可达，容器仍会启动，任务会按重试策略继续尝试
-- 容器停止时会终止正在执行的 tar/rclone；已完成的归档保留在 `/data/staging`，下次启动继续重传
+- 容器停止时会终止正在执行的 tar/rclone；已完成的归档保留在 `/tmp/backup-staging`，下次启动继续重传（容器重建会丢失）

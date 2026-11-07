@@ -31,6 +31,12 @@ notify:
   on_success_mqtt: false
   on_failure_mqtt: true
 
+# 占位配置默认不加密；配置 age 公钥后改成 enabled: true
+encryption:
+  enabled: false
+  method: "age"
+  recipient: ""
+
 defaults:
   compression: "zstd"
   zstd_level: 3

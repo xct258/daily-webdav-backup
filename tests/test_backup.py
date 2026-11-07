@@ -11,7 +11,8 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
 import retention  # noqa: E402
-from config import Job, load_config, normalize_schedule  # noqa: E402
+from archive import archive_name  # noqa: E402
+from config import EncryptionConfig, Job, load_config, normalize_schedule  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -99,6 +100,26 @@ jobs:
             self.assertIn("etc", jobs)
             self.assertFalse(jobs["etc"].enabled)
             self.assertTrue(jobs["appdata"].enabled)
+
+
+class EncryptionTest(unittest.TestCase):
+    def test_age_archive_name(self) -> None:
+        job = Job(name="etc", paths=["/tmp/etc"])
+        when = datetime(2026, 11, 7, 3, 0, 0)
+        encryption = EncryptionConfig(
+            enabled=True, method="age", recipient="age1example"
+        )
+        self.assertEqual(
+            archive_name(job, when, encryption),
+            "etc-20261107-030000.tar.zst.age",
+        )
+
+    def test_encrypted_archive_retention(self) -> None:
+        when = datetime(2026, 11, 7, 3, 0, 0, tzinfo=ZoneInfo("UTC"))
+        parsed = retention.parse_archive_time(
+            "etc-20261107-030000.tar.zst.age", "etc", when.tzinfo
+        )
+        self.assertEqual(parsed, when)
 
 
 class RetentionTest(unittest.TestCase):

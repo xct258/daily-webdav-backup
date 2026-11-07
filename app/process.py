@@ -68,12 +68,14 @@ def run_command(
     log_output: bool = True,
     log_level: int = logging.INFO,
     collect_output: bool = True,
+    input_text: str | None = None,
 ) -> CommandResult:
     LOG.debug("执行命令：%s", " ".join(cmd))
     started = time.monotonic()
 
     proc = subprocess.Popen(
         cmd,
+        stdin=subprocess.PIPE if input_text is not None else subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -83,6 +85,13 @@ def run_command(
         start_new_session=True,
     )
     assert proc.stdout is not None
+
+    if input_text is not None and proc.stdin is not None:
+        try:
+            proc.stdin.write(input_text)
+            proc.stdin.close()
+        except (BrokenPipeError, OSError):
+            pass
 
     lines: list[str] = []
     lock = threading.Lock()

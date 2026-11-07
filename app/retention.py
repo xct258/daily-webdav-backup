@@ -13,7 +13,8 @@ LOG = logging.getLogger("backup.retention")
 
 def _archive_re(job_name: str) -> re.Pattern[str]:
     return re.compile(
-        rf"^{re.escape(job_name)}-(\d{{8}})-(\d{{6}})\.tar(?:\.zst|\.gz)?$"
+        rf"^{re.escape(job_name)}-(\d{{8}})-(\d{{6}})\.tar(?:\.zst|\.gz)?"
+        rf"(?:\.age|\.gpg)?$"
     )
 
 

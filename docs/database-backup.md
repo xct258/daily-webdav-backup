@@ -87,7 +87,7 @@ extra_hosts:
 
 ### 4. 临时空间和超时
 
-dump 会写到 `/data/staging/hooks/<job>/`，默认超时 300 秒。
+dump 会写到 `/tmp/backup-staging/hooks/<job>/`，默认超时 300 秒。
 
 数据库较大时在 compose 里加：
 
@@ -105,8 +105,8 @@ environment:
 
 ```yaml
 paths:
-  - "/data/staging/hooks/postgres"
-archive_root: "/data/staging/hooks"
+  - "/tmp/backup-staging/hooks/postgres"
+archive_root: "/tmp/backup-staging/hooks"
 ```
 
 这样归档里是：
@@ -115,7 +115,7 @@ archive_root: "/data/staging/hooks"
 postgres/all.sql.gz
 ```
 
-不要把 `archive_root` 设成 `/`，否则 `/data/staging` 会被当成备份程序自己的临时目录排除掉。
+不要把 `archive_root` 设成 `/`，否则 `/tmp/backup-staging` 会被当成备份程序自己的临时目录排除掉。
 
 ### 6. 推荐拆成独立任务
 
@@ -138,8 +138,8 @@ jobs:
   - name: "postgres"
     enabled: true
     paths:
-      - "/data/staging/hooks/postgres"
-    archive_root: "/data/staging/hooks"
+      - "/tmp/backup-staging/hooks/postgres"
+    archive_root: "/tmp/backup-staging/hooks"
     pre_cmd: |
       set -euo pipefail
       mkdir -p "$HOOK_DIR"
@@ -198,8 +198,8 @@ jobs:
   - name: "mysql"
     enabled: true
     paths:
-      - "/data/staging/hooks/mysql"
-    archive_root: "/data/staging/hooks"
+      - "/tmp/backup-staging/hooks/mysql"
+    archive_root: "/tmp/backup-staging/hooks"
     pre_cmd: |
       set -euo pipefail
       mkdir -p "$HOOK_DIR"
@@ -258,8 +258,8 @@ jobs:
   - name: "sqlite"
     enabled: true
     paths:
-      - "/data/staging/hooks/sqlite"
-    archive_root: "/data/staging/hooks"
+      - "/tmp/backup-staging/hooks/sqlite"
+    archive_root: "/tmp/backup-staging/hooks"
     pre_cmd: |
       set -euo pipefail
       mkdir -p "$HOOK_DIR"
@@ -271,7 +271,7 @@ jobs:
 或者：
 
 ```sql
-VACUUM INTO '/data/staging/hooks/sqlite/data.db';
+VACUUM INTO '/tmp/backup-staging/hooks/sqlite/data.db';
 ```
 
 不要把正在写入的 `.db` 和 `-wal` / `-shm` 直接 tar。
@@ -291,8 +291,8 @@ jobs:
   - name: "redis"
     enabled: true
     paths:
-      - "/data/staging/hooks/redis"
-    archive_root: "/data/staging/hooks"
+      - "/tmp/backup-staging/hooks/redis"
+    archive_root: "/tmp/backup-staging/hooks"
     pre_cmd: |
       set -euo pipefail
       mkdir -p "$HOOK_DIR"
@@ -321,8 +321,8 @@ jobs:
   - name: "mongodb"
     enabled: true
     paths:
-      - "/data/staging/hooks/mongodb"
-    archive_root: "/data/staging/hooks"
+      - "/tmp/backup-staging/hooks/mongodb"
+    archive_root: "/tmp/backup-staging/hooks"
     pre_cmd: |
       set -euo pipefail
       mkdir -p "$HOOK_DIR"

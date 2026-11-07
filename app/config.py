@@ -127,6 +127,15 @@ class NotifyConfig:
 
 
 @dataclass
+class EncryptionConfig:
+    enabled: bool = False
+    method: str = "age"  # age | gpg
+    recipient: str = ""
+    passphrase: str = ""
+    passphrase_env: str = "BACKUP_GPG_PASSPHRASE"
+
+
+@dataclass
 class Defaults:
     compression: str = "zstd"
     zstd_level: int = 3
@@ -165,9 +174,10 @@ class Config:
     notify: NotifyConfig
     defaults: Defaults
     jobs: list[Job]
+    encryption: EncryptionConfig = field(default_factory=EncryptionConfig)
     auto_discover: bool = False
     discover_root: str = "/sources"
-    staging_dir: str = "/data/staging"
+    staging_dir: str = "/tmp/backup-staging"
     state_dir: str = "/data/state"
     lock_file: str = "/data/.backup.lock"
     run_missed: bool = True
@@ -432,6 +442,48 @@ def _discover_jobs(
     return manual_jobs + discovered
 
 
+def _parse_encryption(data: dict | None) -> EncryptionConfig:
+    raw = data or {}
+    if not isinstance(raw, dict):
+        raise ConfigError("encryption 必须是对象")
+
+    enabled = _env_bool("ENCRYPTION_ENABLED", _as_bool(raw.get("enabled"), False))
+    method = (
+        _env("ENCRYPTION_METHOD", str(raw.get("method") or "age"))
+        or "age"
+    ).strip().lower()
+    if method not in {"age", "gpg"}:
+        raise ConfigError("encryption.method 只能是 age / gpg")
+
+    recipient = _env("AGE_RECIPIENT", str(raw.get("recipient") or "")) or ""
+    recipient = recipient.strip()
+    passphrase = _env("ENCRYPTION_PASSPHRASE", str(raw.get("passphrase") or "")) or ""
+    passphrase_env = (
+        _env(
+            "ENCRYPTION_PASSPHRASE_ENV",
+            str(raw.get("passphrase_env") or "BACKUP_GPG_PASSPHRASE"),
+        )
+        or "BACKUP_GPG_PASSPHRASE"
+    ).strip()
+
+    if enabled:
+        if method == "age" and not recipient:
+            raise ConfigError("encryption.enabled=true 且 method=age 时必须配置 recipient")
+        if method == "gpg" and not passphrase and not os.environ.get(passphrase_env):
+            raise ConfigError(
+                "encryption.enabled=true 且 method=gpg 时必须配置 passphrase "
+                f"或环境变量 {passphrase_env}"
+            )
+
+    return EncryptionConfig(
+        enabled=enabled,
+        method=method,
+        recipient=recipient,
+        passphrase=passphrase,
+        passphrase_env=passphrase_env,
+    )
+
+
 def load_config(path: str | None = None) -> Config:
     config_file = path or _env("CONFIG_FILE", "/config/config.yml")
     assert config_file is not None
@@ -507,6 +559,7 @@ def load_config(path: str | None = None) -> Config:
     notify.enabled = _env_bool("PUSH_ENABLED", notify.enabled)
     notify.on_success_mqtt = _env_bool("PUSH_ON_SUCCESS", notify.on_success_mqtt)
     notify.on_failure_mqtt = _env_bool("PUSH_ON_FAILURE", notify.on_failure_mqtt)
+    encryption = _parse_encryption(data.get("encryption"))
     if notify.enabled and not notify.api_url:
         raise ConfigError("notify.enabled=true 时 notify.api_url 不能为空")
     if notify.enabled and not notify.server_name:
@@ -536,7 +589,9 @@ def load_config(path: str | None = None) -> Config:
     if not jobs:
         raise ConfigError("jobs 不能为空（或设置 auto_discover: true）")
 
-    staging_dir = _norm_path(_env("STAGING_DIR", "/data/staging") or "/data/staging")
+    # 固定使用容器内部临时目录：避免归档出现在被备份的宿主机挂载目录中，
+    # 也避免 tar 读到正在生成的归档文件。
+    staging_dir = "/tmp/backup-staging"
     state_dir = _norm_path(_env("STATE_DIR", "/data/state") or "/data/state")
     lock_file = _norm_path(_env("LOCK_FILE", "/data/.backup.lock") or "/data/.backup.lock")
 
@@ -548,6 +603,7 @@ def load_config(path: str | None = None) -> Config:
         notify=notify,
         defaults=defaults,
         jobs=jobs,
+        encryption=encryption,
         auto_discover=auto_discover,
         discover_root=discover_root,
         staging_dir=staging_dir,
@@ -580,8 +636,9 @@ def describe(config: Config) -> str:
         f"WebDAV 用户：{config.webdav.user}",
         f"WebDAV 远端根：{config.webdav.remote_path}",
         f"推送：{'启用' if config.notify.enabled else '关闭'} {config.notify.api_url}",
-        f"staging：{config.staging_dir}",
+        f"staging：{config.staging_dir}（固定）",
         f"state：{config.state_dir}",
+        f"加密：{'开启（' + config.encryption.method + '）' if config.encryption.enabled else '关闭'}",
         f"自动发现：{'开启' if config.auto_discover else '关闭'}"
         + (f"（{config.discover_root}）" if config.auto_discover else ""),
         "任务：",

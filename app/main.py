@@ -126,6 +126,13 @@ def cmd_validate(args: argparse.Namespace) -> int:
     ) and shutil.which("zstd") is None:
         errors.append("缺少命令：zstd（有任务使用 zstd 压缩）")
 
+    if config.encryption.enabled:
+        binary = "age" if config.encryption.method == "age" else "gpg"
+        if shutil.which(binary) is None:
+            errors.append(
+                f"缺少命令：{binary}（encryption.method={config.encryption.method}）"
+            )
+
     for job in config.jobs:
         if not job.enabled:
             continue

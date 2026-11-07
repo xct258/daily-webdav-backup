@@ -8,7 +8,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from config import Config, Job
+from config import Config, EncryptionConfig, Job
 from process import CommandInterrupted, CommandTimeout, run_command
 
 LOG = logging.getLogger("backup.archive")
@@ -57,12 +57,18 @@ def ensure_sidecar(archive_path: str) -> str:
     return sidecar
 
 
-def archive_name(job: Job, when: datetime) -> str:
+def archive_name(
+    job: Job,
+    when: datetime,
+    encryption: EncryptionConfig | None = None,
+) -> str:
     suffix = {
         "zstd": ".tar.zst",
         "gzip": ".tar.gz",
         "none": ".tar",
     }[job.compression]
+    if encryption is not None and encryption.enabled:
+        suffix += ".age" if encryption.method == "age" else ".gpg"
     return f"{job.name}-{when.strftime('%Y%m%d-%H%M%S')}{suffix}"
 
 
@@ -141,6 +147,71 @@ def _verify(archive_path: str, stop_event: threading.Event | None) -> None:
         raise ArchiveError(f"归档完整性检查失败（tar -tf 退出码 {result.returncode}）")
 
 
+def _encrypt_archive(
+    plain_path: str,
+    encrypted_path: str,
+    encryption: EncryptionConfig,
+    stop_event: threading.Event | None,
+) -> None:
+    if encryption.method == "age":
+        cmd = [
+            "age",
+            "--encrypt",
+            "--recipient",
+            encryption.recipient,
+            "--output",
+            encrypted_path,
+            plain_path,
+        ]
+        result = run_command(
+            cmd,
+            stop_event=stop_event,
+            timeout=3600,
+            log_output=True,
+        )
+    else:
+        passphrase = encryption.passphrase or os.environ.get(
+            encryption.passphrase_env, ""
+        )
+        if not passphrase:
+            raise ArchiveError(
+                "GPG 加密缺少密码：配置 encryption.passphrase 或环境变量 "
+                f"{encryption.passphrase_env}"
+            )
+        cmd = [
+            "gpg",
+            "--batch",
+            "--yes",
+            "--no-tty",
+            "--pinentry-mode",
+            "loopback",
+            "--passphrase-fd",
+            "0",
+            "--symmetric",
+            "--cipher-algo",
+            "AES256",
+            "--output",
+            encrypted_path,
+            plain_path,
+        ]
+        result = run_command(
+            cmd,
+            stop_event=stop_event,
+            timeout=3600,
+            log_output=False,
+            input_text=passphrase + "\n",
+        )
+
+    if result.returncode != 0:
+        raise ArchiveError(
+            f"{encryption.method} 加密失败（退出码 {result.returncode}）："
+            f"{result.output[-1000:] if result.output else '无输出'}"
+        )
+    if not os.path.exists(encrypted_path) or os.path.getsize(encrypted_path) <= 0:
+        raise ArchiveError(f"{encryption.method} 加密后文件不存在或为空")
+    LOG.info("加密完成：%s", os.path.basename(encrypted_path))
+
+
 def create_archive(
     job: Job,
     config: Config,
@@ -150,8 +221,10 @@ def create_archive(
     job_dir = os.path.join(config.staging_dir, job.name)
     os.makedirs(job_dir, exist_ok=True)
 
-    filename = archive_name(job, when)
-    archive_path = os.path.join(job_dir, filename)
+    plain_filename = archive_name(job, when)
+    plain_path = os.path.join(job_dir, plain_filename)
+    final_filename = archive_name(job, when, config.encryption)
+    archive_path = os.path.join(job_dir, final_filename)
     exclude_file = os.path.join(job_dir, f".exclude-{when.strftime('%Y%m%d-%H%M%S')}.txt")
     warnings: list[str] = []
     success = False
@@ -172,7 +245,7 @@ def create_archive(
         if job.one_file_system:
             cmd.append("--one-file-system")
         cmd.extend(_compression_args(job))
-        cmd.extend(["-cf", archive_path])
+        cmd.extend(["-cf", plain_path])
         cmd.extend(_relative_path(path, job.archive_root) for path in job.paths)
 
         LOG.info("开始打包 %s：%s", job.name, " ".join(job.paths))
@@ -191,15 +264,34 @@ def create_archive(
             warnings.append("tar 退出码 1：部分文件在读取时发生变化，归档仍可用")
             LOG.warning(warnings[-1])
 
-        if not os.path.exists(archive_path):
+        if not os.path.exists(plain_path):
             raise ArchiveError("tar 执行结束，但归档文件不存在")
-        size = os.path.getsize(archive_path)
-        if size <= 0:
+        if os.path.getsize(plain_path) <= 0:
             raise ArchiveError("归档文件大小为 0")
 
         if config.verify_archive:
-            LOG.info("检查归档完整性：%s", filename)
-            _verify(archive_path, stop_event)
+            LOG.info("检查归档完整性：%s", plain_filename)
+            _verify(plain_path, stop_event)
+
+        if config.encryption.enabled:
+            LOG.info(
+                "加密归档：%s -> %s", plain_filename, final_filename
+            )
+            _encrypt_archive(
+                plain_path, archive_path, config.encryption, stop_event
+            )
+            try:
+                os.unlink(plain_path)
+            except OSError as exc:
+                raise ArchiveError(f"加密成功但删除明文归档失败：{exc}") from exc
+        else:
+            archive_path = plain_path
+
+        if not os.path.exists(archive_path):
+            raise ArchiveError("加密后归档文件不存在")
+        size = os.path.getsize(archive_path)
+        if size <= 0:
+            raise ArchiveError("归档文件大小为 0")
 
         sha256 = _sha256_file(archive_path)
         write_sidecar(archive_path, sha256)
@@ -220,7 +312,7 @@ def create_archive(
         LOG.info(
             "打包完成 %s：%s（%.1f MB，%.1fs）",
             job.name,
-            filename,
+            final_filename,
             size / 1024 / 1024,
             result.duration,
         )
@@ -244,9 +336,14 @@ def create_archive(
                 os.unlink(exclude_file)
         except OSError:
             pass
-        # 失败时清掉不完整的归档，避免下次被误当成本地备份
+        # 失败时清掉不完整的明文/加密归档和校验文件
         if not success:
-            for path in (archive_path, archive_path + ".sha256"):
+            for path in {
+                plain_path,
+                archive_path,
+                plain_path + ".sha256",
+                archive_path + ".sha256",
+            }:
                 try:
                     if os.path.exists(path):
                         os.unlink(path)
