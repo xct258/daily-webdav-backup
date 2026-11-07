@@ -2,53 +2,140 @@
 # 自动生成的占位配置
 #
 # 容器首次启动时如果找不到 config/config.yml，会复制本文件。
+#
+# 当前是安全占位状态：
+#   - WebDAV 是假地址
+#   - 推送关闭
+#   - 自动发现关闭
+#   - 任务禁用
+#   - 加密关闭
+#
 # 修改完成后执行：
 #   docker compose restart
 #
-# 这是占位配置：
-#   - WebDAV 是假地址
-#   - 任务默认禁用
-#   - 推送默认关闭
-# 修改好真实信息后再启用任务。
+# 注意：
+#   - 这个文件包含 WebDAV 密码，不要提交到 Git
+#   - 路径都是容器内路径，宿主机目录先在 docker-compose.yml 挂载
 # ============================================================
 
-# 调度：每天 03:00；也可以写 "03:00"
+# ------------------------------------------------------------
+# 1. 调度
+#
+# schedule：标准 5 段 cron，或 "HH:MM" 简写
+#   "0 3 * * *"      每天 03:00
+#   "30 2 * * 1"     每周一 02:30
+#   "0 */6 * * *"    每 6 小时
+#   "03:00"          等价于每天 03:00
+#
+# timezone：影响 cron、日志时间和归档文件名
+# ------------------------------------------------------------
 schedule: "0 3 * * *"
-# 时区：影响 cron、日志和归档文件名
 timezone: "Asia/Shanghai"
 
-# 自动发现：true 时把 /sources 下每个一级子目录变成一个任务
-# 挂载示例：
+# ------------------------------------------------------------
+# 2. 自动发现（推荐开启）
+#
+# true 时扫描 discover_root 下的一级子目录，每个子目录一个任务：
+#   /sources/etc      -> 任务 etc
+#   /sources/appdata  -> 任务 appdata
+#
+# compose 挂载示例：
 #   - /etc:/sources/etc:ro
 #   - /opt/appdata:/sources/appdata:ro
+#
+# 开启后 jobs 可以省略；同名手动任务优先。
+# ------------------------------------------------------------
 auto_discover: false
 discover_root: "/sources"
 
-# WebDAV 连接信息
-# url / user / password / remote_path 必须改成真实值
+# ------------------------------------------------------------
+# 3. WebDAV
+#
+# url：WebDAV 地址，通常以 / 结尾
+#   OpenList / Alist：
+#     https://openlist.example.com/dav/
+#   Nextcloud：
+#     https://cloud.example.com/remote.php/dav/files/用户名/
+#   通用 WebDAV：
+#     https://dav.example.com/dav/
+#
+# user / password：WebDAV 登录账号和明文密码
+#   程序启动时会自动生成 /data/.rclone.conf 并 obscure 密码
+#   也可以用 ${WEBDAV_PASSWORD} 引用环境变量
+#
+# vendor：WebDAV 服务端类型
+#   other           通用 WebDAV（默认）
+#   nextcloud       Nextcloud
+#   owncloud        ownCloud 10
+#   infinitescale   ownCloud Infinite Scale
+#   fastmail        Fastmail Files
+#   sharepoint      SharePoint Online
+#   sharepoint-ntlm SharePoint NTLM
+#   rclone          rclone serve webdav
+#
+# remote_path：远端根路径，支持单路径或多路径
+#
+# 单路径：
+#   remote_path: "/backups/nas"
+#
+# 多路径（每个路径独立间隔和保留）：
+#   remote_path:
+#     - path: "/backups/nas"
+#       interval: "1d"
+#       keep_last: 7
+#       keep_days: 0
+#     - path: "/backups/nas2"
+#       interval: "7d"
+#       keep_last: 4
+#       keep_days: 0
+#
+# interval 支持：30m / 12h / 1d / 7d / 30d；
+#   0 或 always 表示每次调度都上传。
+#
+# date_format：远端时间目录格式，默认按天
+#   最终结构：<target.path>/<job>/<时间>/<归档>
+#   例：backups/nas/docker/2026-11-08/docker-....tar.zst
+#   空字符串或 "none" 表示不加时间目录
+#
+# remote_name：rclone remote 名，默认 webdav
+# rclone_config：自动生成的 rclone 配置路径
+# ------------------------------------------------------------
 webdav:
   url: "https://example.invalid/dav/"
   user: "backup"
   password: "change-me"
-  # vendor 常用值：other / nextcloud / owncloud / infinitescale / fastmail
   vendor: "other"
-  # 远端根路径，下面按任务名分子目录
   remote_path: "/backups/nas"
   # 多路径示例：把上面单行替换成列表
   # remote_path:
   #   - path: "/backups/nas"
   #     interval: "1d"
   #     keep_last: 7
+  #     keep_days: 0
   #   - path: "/backups/nas2"
   #     interval: "7d"
   #     keep_last: 4
-  # 时间目录格式；最终结构 <remote_path>/<job>/<时间>/<归档>
-  # 空字符串或 "none" 表示不加时间目录
+  #     keep_days: 0
   date_format: "%Y-%m-%d"
+  # remote_name: "webdav"
+  # rclone_config: "/data/.rclone.conf"
 
-# 消息推送
-# enabled: false 时完全不推送
-# on_success_mqtt: false 表示成功只保存记录，不推手机
+# ------------------------------------------------------------
+# 4. 消息推送
+#
+# enabled：是否启用推送
+# api_url：推送接口
+# server_name：来源服务器名称
+# category：service / todo
+# topic：MQTT 主题
+# mode：append / overwrite
+# on_success_mqtt：成功时是否推送到 MQTT
+#   false = 只保存记录，不推手机
+# on_failure_mqtt：失败/告警时是否推送到 MQTT
+# timeout：HTTP 超时秒数
+#
+# 占位配置默认关闭，避免误发。
+# ------------------------------------------------------------
 notify:
   enabled: false
   api_url: "https://push-server.o1-1.xct258.top/api/push"
@@ -58,38 +145,111 @@ notify:
   mode: "append"
   on_success_mqtt: false
   on_failure_mqtt: true
+  timeout: 10
 
-# 归档加密
-# method: age / gpg
-# age 需要 recipient 公钥；gpg 需要 passphrase 或 passphrase_env
+# ------------------------------------------------------------
+# 5. 归档加密（可选）
+#
+# enabled：是否加密
+# method：
+#   age  公钥加密（推荐）
+#   gpg  对称密码
+#
+# age：
+#   age-keygen -o age.key
+#   把输出的 age1... 公钥填到 recipient
+#   恢复时使用 age.key 私钥
+#   上传扩展名：.tar.zst.age
+#
+# gpg：
+#   passphrase_env 指向密码环境变量，默认 BACKUP_GPG_PASSPHRASE
+#   上传扩展名：.tar.zst.gpg
+#
+# .sha256 校验的是加密后的文件。
+# ------------------------------------------------------------
 encryption:
   enabled: false
   method: "age"
   recipient: ""
+  # passphrase: ""
+  # passphrase_env: "BACKUP_GPG_PASSPHRASE"
 
-# 默认参数，可被每个 job 覆盖
+# ------------------------------------------------------------
+# 6. 默认参数
+#
+# compression：
+#   zstd / gzip / none
+#
+# zstd_level：1-22
+#   1 最快，3 默认，19 更小但更慢
+#
+# keep_last：远端每个任务/目标保留最近 N 份
+#   0 = 不按数量清理
+#
+# keep_days：远端按天数清理
+#   0 = 不按天数清理
+#   和 keep_last 同时生效
+#
+# archive_root：归档内路径相对哪个根目录
+#   默认 "/"：/sources/etc -> sources/etc
+#   设为 "/sources"：/sources/etc -> etc
+#
+# xattrs：是否保留扩展属性
+# one_file_system：是否只备份同一文件系统
+#
+# exclude：GNU tar 排除规则，相对于 archive_root
+# ------------------------------------------------------------
 defaults:
-  # zstd / gzip / none
   compression: "zstd"
-  # zstd 等级 1-22
   zstd_level: 3
-  # 每个任务远端保留最近 N 份；0 = 不按数量清理
   keep_last: 7
-  # 远端按天数清理；0 = 不按天数清理
   keep_days: 0
-  # 归档内路径相对这个目录
   archive_root: "/"
-  # GNU tar 排除规则，相对于 archive_root
+  xattrs: false
+  one_file_system: false
   exclude:
     - "**/.cache/**"
     - "**/node_modules/**"
     - "**/*.tmp"
 
-# 占位任务：默认禁用
-# 修改 enabled: true 和 paths 后才会真正备份
+# ------------------------------------------------------------
+# 7. 任务列表
+#
+# 每个 job 生成一个归档，上传到：
+#   <target.path>/<job.name>/<时间>/<archive>
+#
+# name：任务名，同时作为远端子目录和文件名前缀
+#   只能包含字母、数字、下划线、点、横线
+#
+# enabled：是否启用
+# paths：容器内绝对路径
+# archive_root：归档内路径根
+# remote_path：可选，单目标模式下覆盖任务目录
+#   webdav.remote_path 配置成多目标时不支持
+#
+# 以下字段可覆盖 defaults：
+#   compression / zstd_level / keep_last / keep_days /
+#   xattrs / one_file_system / exclude
+#
+# pre_cmd：打包前执行自定义命令
+# post_cmd：打包后执行，无论成功失败
+#   可用环境变量：
+#     JOB_NAME / PHASE / ARCHIVE_PATH / HOOK_DIR
+#
+# 占位任务默认禁用。修改 enabled: true 和 paths 后才会真正备份。
+# ------------------------------------------------------------
 jobs:
   - name: "placeholder"
     enabled: false
     paths:
       - "/sources"
     archive_root: "/"
+    # remote_path: "/backups/nas/placeholder"
+    # compression: "zstd"
+    # zstd_level: 3
+    # keep_last: 7
+    # keep_days: 0
+    # exclude:
+    #   - "**/cache/**"
+    # pre_cmd: ""
+    # post_cmd: ""
