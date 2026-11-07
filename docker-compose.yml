@@ -37,22 +37,8 @@ services:
     # 如果确实需要 host 网络，取消下面注释，并注释掉 ports（当前没有 ports）
     # network_mode: host
 
-    environment:
-      # 时区：影响 cron 调度、日志时间、归档文件名
-      TZ: Asia/Shanghai
-
-      # 配置文件路径（对应下面的 ./config:/config）
-      CONFIG_FILE: /config/config.yml
-
-      # 日志根目录（对应 ./data:/data）
-      LOG_BASE_DIR: /data/logs
-
-      # Python 输出不缓冲，日志实时写入
-      PYTHONUNBUFFERED: "1"
-
-      # 备份参数（调度、WebDAV、推送、加密、保留、重试等）
-      # 统一在 config/config.yml 中配置，compose 不再提供覆盖项。
-
+    # 配置路径固定为 /config/config.yml，日志固定写到 /data/logs，
+    # Python 输出不缓冲由 startup/services.sh 设置，均不在 compose 中配置。
     volumes:
       # 配置目录。
       # - config/config.yml 不存在时，prepare.sh 会自动生成占位配置

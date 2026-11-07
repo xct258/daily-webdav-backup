@@ -10,9 +10,9 @@ set -euo pipefail
 
 . "$(dirname "${BASH_SOURCE[0]}")/log.sh"
 
-export LOG_BASE_DIR="${LOG_BASE_DIR:-/data/logs}"
-export CONFIG_FILE="${CONFIG_FILE:-/config/config.yml}"
-export STATE_DIR="${STATE_DIR:-/data/state}"
+export LOG_BASE_DIR=/data/logs
+export CONFIG_FILE=/config/config.yml
+export STATE_DIR=/data/state
 # 临时归档固定放容器内部，不落到被备份的挂载目录里；不要挂载这个路径
 STAGING_DIR=/tmp/backup-staging
 

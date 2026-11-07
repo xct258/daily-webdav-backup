@@ -196,10 +196,9 @@ def cmd_test_connection(args: argparse.Namespace) -> int:
 
 
 def cmd_health(args: argparse.Namespace) -> int:
-    state_dir = os.environ.get("STATE_DIR", "/data/state")
-    path = os.path.join(state_dir, "heartbeat")
-    max_age = int(os.environ.get("HEALTH_MAX_AGE", "300"))
-    ok, message = heartbeat_healthy(path, max_age)
+    # 固定路径，不提供环境变量配置
+    path = "/data/state/heartbeat"
+    ok, message = heartbeat_healthy(path, 300)
     print(message)
     return 0 if ok else 1
 

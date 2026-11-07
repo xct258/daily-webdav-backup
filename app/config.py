@@ -618,7 +618,7 @@ def _parse_encryption(data: dict | None) -> EncryptionConfig:
 
 
 def load_config(path: str | None = None) -> Config:
-    config_file = path or _env("CONFIG_FILE", "/config/config.yml")
+    config_file = path or "/config/config.yml"
     assert config_file is not None
 
     if not os.path.isfile(config_file):
@@ -740,8 +740,8 @@ def load_config(path: str | None = None) -> Config:
     # 固定使用容器内部临时目录：避免归档出现在被备份的宿主机挂载目录中，
     # 也避免 tar 读到正在生成的归档文件。
     staging_dir = "/tmp/backup-staging"
-    state_dir = _norm_path(_env("STATE_DIR", "/data/state") or "/data/state")
-    lock_file = _norm_path(_env("LOCK_FILE", "/data/.backup.lock") or "/data/.backup.lock")
+    state_dir = "/data/state"
+    lock_file = "/data/.backup.lock"
 
     config = Config(
         config_file=config_file,

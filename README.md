@@ -407,19 +407,20 @@ notify:
 
 ---
 
-## 容器级环境变量
+## 固定路径
 
-备份参数全部在 `config/config.yml` 中配置，compose 不再提供覆盖项。  
-compose 只保留必要的容器级变量：
+compose 不再提供 `environment` 配置。以下路径在程序中固定：
 
-| 变量 | 默认 | 说明 |
-|---|---|---|
-| `CONFIG_FILE` | `/config/config.yml` | 配置文件路径 |
-| `TZ` | `Asia/Shanghai` | 容器系统时区；调度以 config.yml 的 `timezone` 为准 |
-| `LOG_BASE_DIR` | `/data/logs` | 日志根目录 |
-| `STATE_DIR` | `/data/state` | 状态目录 |
-| `HEALTH_MAX_AGE` | `300` | 心跳最大秒数 |
-| `PYTHONUNBUFFERED` | `1` | Python 输出不缓冲 |
+| 用途 | 路径 |
+|---|---|
+| 配置文件 | `/config/config.yml` |
+| 日志 | `/data/logs` |
+| 状态 | `/data/state` |
+| 临时归档 | `/tmp/backup-staging` |
+| 锁文件 | `/data/.backup.lock` |
+| rclone 配置 | `/data/.rclone.conf` |
+
+备份参数全部在 `config/config.yml` 中配置。
 
 `STARTUP_RETRY` / `STARTUP_RETRY_DELAY` 由模板启动脚本使用，默认 `0` / `5`，一般不需要设置。
 
