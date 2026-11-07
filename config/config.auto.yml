@@ -34,6 +34,9 @@ webdav:
   vendor: "other"
   # 远端根路径，下面按任务名分子目录
   remote_path: "/backups/nas"
+  # 时间目录格式；最终结构 <remote_path>/<job>/<时间>/<归档>
+  # 空字符串或 "none" 表示不加时间目录
+  date_format: "%Y-%m-%d"
 
 # 消息推送
 # enabled: false 时完全不推送

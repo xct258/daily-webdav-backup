@@ -134,7 +134,7 @@ discover_root: "/sources"
 每个任务生成一个归档，上传到：
 
 ```text
-<remote_path>/<任务名>/
+<remote_path>/<任务名>/<时间>/
 ```
 
 如果某个目录需要单独的排除规则、保留策略、`pre_cmd` 等，再写手动 job。
@@ -188,16 +188,25 @@ schedule: "03:00"
 | `password` | 是 | 明文密码，程序自动 obscure |
 | `vendor` | 否 | 默认 `other`；Nextcloud 用 `nextcloud` |
 | `remote_path` | 是 | 远端根路径（相对 WebDAV URL），例如 `/backups/nas` |
+| `date_format` | 否 | 时间目录格式，默认 `%Y-%m-%d`；空字符串或 `none` 关闭 |
 | `remote_name` | 否 | rclone remote 名，默认 `webdav` |
 | `rclone_config` | 否 | 默认 `/data/.rclone.conf` |
 
 每个任务默认上传到：
 
 ```text
-<remote_name>:<remote_path>/<job.name>/
+<remote_name>:<remote_path>/<job.name>/<date_format>/<archive>
 ```
 
-也可以在 job 里用 `remote_path` 单独覆盖。
+例如：
+
+```text
+backups/nas/docker/2026-11-07/docker-20261107-175000.tar.zst.age
+```
+
+保留策略会递归扫描任务目录，因此可以跨多个时间目录执行 `keep_last` / `keep_days`。
+
+也可以在 job 里用 `remote_path` 单独覆盖任务根目录。
 
 ### 自动发现
 
@@ -380,6 +389,7 @@ notify:
 | `WEBDAV_USER` | 配置值 | 用户名 |
 | `WEBDAV_PASSWORD` | 配置值 | 密码 |
 | `WEBDAV_REMOTE_PATH` | 配置值 | 远端根路径 |
+| `WEBDAV_DATE_FORMAT` | `%Y-%m-%d` | 远端时间目录格式 |
 | `RCLONE_REMOTE` | `webdav` | rclone remote 名 |
 | `RCLONE_CONFIG` | `/data/.rclone.conf` | rclone 配置路径 |
 | `ENCRYPTION_ENABLED` | 配置值 | 是否加密归档 |

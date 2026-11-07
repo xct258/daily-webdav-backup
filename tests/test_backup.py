@@ -102,6 +102,21 @@ jobs:
             self.assertTrue(jobs["appdata"].enabled)
 
 
+class RemoteLayoutTest(unittest.TestCase):
+    def test_date_layer(self) -> None:
+        config = load_config(os.path.join(ROOT, "config", "config.example.yml"))
+        job = config.jobs[0]
+        when = datetime(2026, 11, 7, 3, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+        self.assertEqual(
+            config.job_remote_path(job, when),
+            "backups/nas/etc/2026-11-07",
+        )
+        self.assertEqual(
+            config.job_base_remote_path(job),
+            "backups/nas/etc",
+        )
+
+
 class EncryptionTest(unittest.TestCase):
     def test_age_archive_name(self) -> None:
         job = Job(name="etc", paths=["/tmp/etc"])
@@ -142,6 +157,15 @@ class RetentionTest(unittest.TestCase):
         ]
         plan = retention.remote_cleanup_plan(entries, self.job, self.now)
         self.assertEqual(plan, ["etc-20261101-030000.tar.zst"])
+
+    def test_remote_keep_last_with_date_dirs(self) -> None:
+        entries = [
+            {"Path": "2026-11-01/etc-20261101-030000.tar.zst"},
+            {"Path": "2026-11-02/etc-20261102-030000.tar.zst"},
+            {"Path": "2026-11-03/etc-20261103-030000.tar.zst"},
+        ]
+        plan = retention.remote_cleanup_plan(entries, self.job, self.now)
+        self.assertEqual(plan, ["2026-11-01/etc-20261101-030000.tar.zst"])
 
     def test_local_protects_pending(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -35,28 +35,33 @@ def remote_cleanup_plan(
     job: Job,
     now: datetime,
 ) -> list[str]:
-    """返回需要删除的远端归档文件名（不含 .sha256）。"""
+    """返回需要删除的远端归档相对路径（不含 .sha256）。
+
+    entries 可以是 rclone lsjson 的递归结果：
+      Path 是相对于任务根目录的路径，Name 是文件名。
+    """
     matches: list[tuple[str, datetime]] = []
     for item in entries:
-        name = str(item.get("Name") or item.get("Path") or "")
-        if not name:
+        path = str(item.get("Path") or item.get("Name") or "")
+        if not path:
             continue
+        name = str(item.get("Name") or path.rsplit("/", 1)[-1])
         when = parse_archive_time(name, job.name, now.tzinfo)
         if when is not None:
-            matches.append((name, when))
+            matches.append((path, when))
 
     matches.sort(key=lambda pair: pair[1], reverse=True)
 
     delete: set[str] = set()
     if job.keep_last > 0:
-        for name, _ in matches[job.keep_last:]:
-            delete.add(name)
+        for path, _ in matches[job.keep_last:]:
+            delete.add(path)
 
     if job.keep_days > 0:
         cutoff = now - timedelta(days=job.keep_days)
-        for name, when in matches:
+        for path, when in matches:
             if when < cutoff:
-                delete.add(name)
+                delete.add(path)
 
     return sorted(delete)
 

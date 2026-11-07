@@ -189,18 +189,21 @@ class Rclone:
                 return data
         return None
 
-    def list_files(self, remote_dir: str) -> list[dict]:
+    def list_files(self, remote_dir: str, recursive: bool = False) -> list[dict]:
+        args = [
+            "lsjson",
+            "--files-only",
+            "--no-mimetype",
+            "--log-level",
+            "ERROR",
+            "--stats",
+            "0",
+        ]
+        if recursive:
+            args.append("--recursive")
+        args.append(self.target(remote_dir))
         result = self._run(
-            [
-                "lsjson",
-                "--files-only",
-                "--no-mimetype",
-                "--log-level",
-                "ERROR",
-                "--stats",
-                "0",
-                self.target(remote_dir),
-            ],
+            args,
             timeout=300,
             check=False,
             log_output=False,

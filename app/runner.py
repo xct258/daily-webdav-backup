@@ -221,8 +221,9 @@ class Runner:
                 LOG.info("任务 %s 执行 pre_cmd", job.name)
                 self._run_hook(job.pre_cmd, "pre", job)
 
+            run_time = now(tz)
             archive: ArchiveResult = create_archive(
-                job, self.config, now(tz), self.stop_event
+                job, self.config, run_time, self.stop_event
             )
             result.archive = archive.path
             result.size = archive.size
@@ -263,7 +264,7 @@ class Runner:
                 raise CommandInterrupted()
 
             # 2. 上传本次新归档
-            item = self._pending_item(job, archive)
+            item = self._pending_item(job, archive, run_time)
             try:
                 result.remote = self._upload_item(item, job)
                 uploaded = True
@@ -383,14 +384,16 @@ class Runner:
                 f"{result.output[-1000:] if result.output else '无输出'}"
             )
 
-    def _pending_item(self, job: Job, archive: ArchiveResult) -> dict:
+    def _pending_item(
+        self, job: Job, archive: ArchiveResult, when=None
+    ) -> dict:
         filename = os.path.basename(archive.path)
         return {
             "archive": archive.path,
             "filename": filename,
             "sha256_file": ensure_sidecar(archive.path),
             "size": archive.size,
-            "remote_dir": self.config.job_remote_path(job),
+            "remote_dir": self.config.job_remote_path(job, when),
             "created_at": iso(now(self.config.tz)),
         }
 
@@ -411,17 +414,21 @@ class Runner:
         return self.rclone.upload(archive_path, sha_path, remote_dir, filename, size)
 
     def _cleanup_remote(self, job: Job, current_filename: str) -> None:
-        remote_dir = self.config.job_remote_path(job)
-        entries = self.rclone.list_files(remote_dir)
+        remote_dir = self.config.job_base_remote_path(job)
+        entries = self.rclone.list_files(remote_dir, recursive=True)
         plan = retention.remote_cleanup_plan(entries, job, now(self.config.tz))
         deleted = 0
-        for name in plan:
-            if name == current_filename:
+        for relative_path in plan:
+            if os.path.basename(relative_path) == current_filename:
                 continue
-            if self.rclone.delete_file(self.rclone.target(remote_dir, name)):
+            if self.rclone.delete_file(
+                self.rclone.target(remote_dir, relative_path)
+            ):
                 deleted += 1
                 self.rclone.delete_file(
-                    self.rclone.target(remote_dir, retention.sidecar_name(name))
+                    self.rclone.target(
+                        remote_dir, retention.sidecar_name(relative_path)
+                    )
                 )
         if deleted:
             LOG.info("任务 %s 清理远端旧归档 %s 个", job.name, deleted)

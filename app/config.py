@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import yaml
 from croniter import croniter
 
-from util import expand_env
+from util import expand_env, now
 
 
 class ConfigError(Exception):
@@ -111,6 +111,8 @@ class WebDAVConfig:
     vendor: str = "other"
     remote_name: str = "webdav"
     rclone_config: str = "/data/.rclone.conf"
+    # 远端时间目录格式；空字符串表示不加时间目录
+    date_format: str = "%Y-%m-%d"
 
 
 @dataclass
@@ -199,11 +201,24 @@ class Config:
         except ZoneInfoNotFoundError as exc:
             raise ConfigError(f"时区不存在：{self.timezone}") from exc
 
-    def job_remote_path(self, job: Job) -> str:
+    def job_base_remote_path(self, job: Job) -> str:
+        """任务根目录，不含时间层。"""
         if job.remote_path:
             return _strip_slashes(job.remote_path)
         base = _strip_slashes(self.webdav.remote_path)
         return f"{base}/{job.name}" if base else job.name
+
+    def job_remote_path(self, job: Job, when=None) -> str:
+        """任务在远端的目录，格式：
+
+        <remote_path>/<job>/<date_format>/<archive>
+        """
+        base = self.job_base_remote_path(job)
+        if not self.webdav.date_format:
+            return base
+        moment = when or now(self.tz)
+        date_dir = moment.strftime(self.webdav.date_format).strip("/")
+        return f"{base}/{date_dir}" if date_dir else base
 
     def enabled_jobs(self) -> list[Job]:
         return [job for job in self.jobs if job.enabled]
@@ -271,6 +286,12 @@ def _parse_webdav(data: dict | None) -> WebDAVConfig:
 
     vendor = str(data.get("vendor") or "other").strip()
 
+    date_format = str(
+        data["date_format"] if "date_format" in data else "%Y-%m-%d"
+    ).strip()
+    if date_format.lower() in {"none", "off", "false"}:
+        date_format = ""
+
     return WebDAVConfig(
         url=url,
         user=user,
@@ -279,6 +300,7 @@ def _parse_webdav(data: dict | None) -> WebDAVConfig:
         vendor=vendor,
         remote_name=remote_name,
         rclone_config=_norm_path(str(data.get("rclone_config") or "/data/.rclone.conf")),
+        date_format=date_format,
     )
 
 
@@ -516,6 +538,9 @@ def load_config(path: str | None = None) -> Config:
     webdav.rclone_config = _norm_path(
         _env("RCLONE_CONFIG", webdav.rclone_config) or "/data/.rclone.conf"
     )
+    webdav.date_format = (
+        _env("WEBDAV_DATE_FORMAT", webdav.date_format) or ""
+    ).strip()
 
     # 环境变量覆盖后再校验一次，避免把明显错误带进运行期
     if not webdav.url.startswith(("http://", "https://")):
@@ -628,6 +653,7 @@ def describe(config: Config) -> str:
         f"WebDAV：{config.webdav.url}",
         f"WebDAV 用户：{config.webdav.user}",
         f"WebDAV 远端根：{config.webdav.remote_path}",
+        f"远端时间目录：{config.webdav.date_format or '关闭'}",
         f"推送：{'启用' if config.notify.enabled else '关闭'} {config.notify.api_url}",
         f"staging：{config.staging_dir}（容器内部固定，不挂载）",
         f"state：{config.state_dir}",

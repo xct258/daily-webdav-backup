@@ -93,6 +93,8 @@ services:
       # WEBDAV_PASSWORD: "明文密码"
       # WEBDAV_REMOTE_PATH: "/backups/nas"
       # WEBDAV_VENDOR: "other"
+      # 远端时间目录格式，空字符串或 none 表示关闭
+      # WEBDAV_DATE_FORMAT: "%Y-%m-%d"
       # RCLONE_REMOTE: "webdav"
       # RCLONE_CONFIG: "/data/.rclone.conf"
 
