@@ -34,6 +34,14 @@ webdav:
   vendor: "other"
   # 远端根路径，下面按任务名分子目录
   remote_path: "/backups/nas"
+  # 多路径示例：把上面单行替换成列表
+  # remote_path:
+  #   - path: "/backups/nas"
+  #     interval: "1d"
+  #     keep_last: 7
+  #   - path: "/backups/nas2"
+  #     interval: "7d"
+  #     keep_last: 4
   # 时间目录格式；最终结构 <remote_path>/<job>/<时间>/<归档>
   # 空字符串或 "none" 表示不加时间目录
   date_format: "%Y-%m-%d"
