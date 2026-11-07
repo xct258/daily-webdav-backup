@@ -148,30 +148,33 @@ notify:
   timeout: 10
 
 # ------------------------------------------------------------
-# 5. 归档加密（可选）
+# 5. 归档加密
 #
-# enabled：是否加密
+# 默认使用 GPG 对称加密。
+# 下面的 change-me 必须修改，否则所有归档都会用这个默认密码加密。
+#
 # method：
-#   age  公钥加密（推荐）
-#   gpg  对称密码
+#   gpg  对称密码（默认）
+#   age  公钥加密（可选）
+#
+# gpg：
+#   passphrase：加密密码
+#   passphrase_env：也可以从环境变量读取密码
+#   上传扩展名：.tar.zst.gpg
+#   使用 AES256-OCB（AEAD），解密需要 GnuPG >= 2.2.21
 #
 # age：
 #   age-keygen -o age.key
 #   把输出的 age1... 公钥填到 recipient
-#   恢复时使用 age.key 私钥
 #   上传扩展名：.tar.zst.age
-#
-# gpg：
-#   passphrase_env 指向密码环境变量，默认 BACKUP_GPG_PASSPHRASE
-#   上传扩展名：.tar.zst.gpg
 #
 # .sha256 校验的是加密后的文件。
 # ------------------------------------------------------------
 encryption:
-  enabled: false
-  method: "age"
-  recipient: ""
-  # passphrase: ""
+  enabled: true
+  method: "gpg"
+  passphrase: "change-me"
+  # recipient: ""          # 仅 method=age 时使用
   # passphrase_env: "BACKUP_GPG_PASSPHRASE"
 
 # ------------------------------------------------------------
@@ -207,10 +210,8 @@ defaults:
   archive_root: "/"
   xattrs: false
   one_file_system: false
-  exclude:
-    - "**/.cache/**"
-    - "**/node_modules/**"
-    - "**/*.tmp"
+  # 默认不设置排除项，所有文件都会进入归档
+  exclude: []
 
 # ------------------------------------------------------------
 # 7. 任务列表

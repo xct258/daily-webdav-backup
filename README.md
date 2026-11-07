@@ -273,8 +273,7 @@ jobs:
     zstd_level: 3
     keep_last: 7
     keep_days: 0
-    exclude:
-      - "**/cache/**"
+    # exclude: []              # 默认不排除
     pre_cmd: ""
     post_cmd: ""
 ```
@@ -301,30 +300,37 @@ jobs:
 
 ### 加密
 
-加密发生在 tar 打包之后、上传之前。上传到 WebDAV 的是密文：
+默认使用 **GPG 对称加密**。加密发生在 tar 打包之后、上传之前：
 
 ```text
-etc-20261107-030000.tar.zst.age
-etc-20261107-030000.tar.zst.age.sha256
+etc-20261107-030000.tar.zst.gpg
+etc-20261107-030000.tar.zst.gpg.sha256
 ```
 
-`.sha256` 校验的是**加密后的文件**。
+`.sha256` 校验的是加密后的文件。
 
-#### age（推荐）
+#### GPG（默认）
 
-镜像内置 `age`。在宿主机或离线环境生成密钥：
+```yaml
+encryption:
+  enabled: true
+  method: "gpg"
+  passphrase: "你的加密密码"
+  # passphrase_env: "BACKUP_GPG_PASSPHRASE"
+```
+
+- 使用 AES256-OCB（AEAD）
+- 不使用 gpg-agent 缓存密码
+- 解密需要 GnuPG >= 2.2.21
+
+恢复：
 
 ```bash
-age-keygen -o age.key
+gpg -d etc-20261107-030000.tar.zst.gpg > etc-20261107-030000.tar.zst
+tar -tf etc-20261107-030000.tar.zst
 ```
 
-会输出公钥，类似：
-
-```text
-Public key: age1...
-```
-
-把公钥写进配置，恢复时使用 `age.key` 私钥：
+#### age（可选）
 
 ```yaml
 encryption:
@@ -333,40 +339,18 @@ encryption:
   recipient: "age1..."
 ```
 
+生成密钥：
+
+```bash
+age-keygen -o age.key
+```
+
 恢复：
 
 ```bash
 sha256sum -c etc-20261107-030000.tar.zst.age.sha256
 age -d -i age.key -o etc-20261107-030000.tar.zst \
   etc-20261107-030000.tar.zst.age
-tar -tf etc-20261107-030000.tar.zst
-```
-
-#### GPG 对称加密
-
-```yaml
-encryption:
-  enabled: true
-  method: "gpg"
-  passphrase_env: "BACKUP_GPG_PASSPHRASE"
-```
-
-compose：
-
-```yaml
-environment:
-  BACKUP_GPG_PASSPHRASE: "你的加密密码"
-```
-
-也可以直接写 `passphrase`，但不推荐。
-
-GPG 默认使用 **AES256-OCB（AEAD）**，并禁用 gpg-agent 的对称密码缓存。  
-解密需要 GnuPG >= 2.2.21；更老的 GPG 无法解密 OCB 归档。
-
-恢复：
-
-```bash
-gpg -d etc-20261107-030000.tar.zst.gpg > etc-20261107-030000.tar.zst
 ```
 
 注意：

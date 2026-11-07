@@ -141,7 +141,7 @@ class NotifyConfig:
 @dataclass
 class EncryptionConfig:
     enabled: bool = False
-    method: str = "age"  # age | gpg
+    method: str = "gpg"  # gpg | age
     recipient: str = ""
     passphrase: str = ""
     passphrase_env: str = "BACKUP_GPG_PASSPHRASE"
