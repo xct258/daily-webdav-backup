@@ -132,6 +132,17 @@ def cmd_validate(args: argparse.Namespace) -> int:
             errors.append(
                 f"缺少命令：{binary}（encryption.method={config.encryption.method}）"
             )
+        if config.encryption.method == "age" and not config.encryption.recipient:
+            errors.append("encryption.method=age 时必须配置 recipient")
+        if config.encryption.method == "gpg":
+            passphrase = config.encryption.passphrase or os.environ.get(
+                config.encryption.passphrase_env, ""
+            )
+            if not passphrase:
+                errors.append(
+                    "encryption.method=gpg 时必须配置 passphrase 或环境变量 "
+                    f"{config.encryption.passphrase_env}"
+                )
 
     for job in config.jobs:
         if not job.enabled:

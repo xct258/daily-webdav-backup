@@ -154,6 +154,8 @@ def _encrypt_archive(
     stop_event: threading.Event | None,
 ) -> None:
     if encryption.method == "age":
+        if not encryption.recipient:
+            raise ArchiveError("age 加密缺少 recipient 公钥")
         cmd = [
             "age",
             "--encrypt",

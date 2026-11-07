@@ -466,15 +466,8 @@ def _parse_encryption(data: dict | None) -> EncryptionConfig:
         or "BACKUP_GPG_PASSPHRASE"
     ).strip()
 
-    if enabled:
-        if method == "age" and not recipient:
-            raise ConfigError("encryption.enabled=true 且 method=age 时必须配置 recipient")
-        if method == "gpg" and not passphrase and not os.environ.get(passphrase_env):
-            raise ConfigError(
-                "encryption.enabled=true 且 method=gpg 时必须配置 passphrase "
-                f"或环境变量 {passphrase_env}"
-            )
-
+    # 这里只做结构校验；recipient / passphrase 在 validate 和真正加密时检查，
+    # 这样 list 等只读命令不需要提供加密密钥也能用。
     return EncryptionConfig(
         enabled=enabled,
         method=method,
