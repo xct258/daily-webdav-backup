@@ -32,6 +32,10 @@
 schedule: "0 3 * * *"
 timezone: "Asia/Shanghai"
 
+# 服务器名称：推送和远端目录共用，只写一次
+# remote_path 只需写基础路径，程序会自动追加 /<server_name>
+server_name: "my-server"
+
 # ------------------------------------------------------------
 # 2. 自动发现（推荐开启）
 #
@@ -73,7 +77,8 @@ discover_root: "/sources"
 #   sharepoint-ntlm SharePoint NTLM
 #   rclone          rclone serve webdav
 #
-# remote_path：远端根路径，支持单路径或多路径
+# remote_path：远端基础路径，最终为 <remote_path>/<server_name>/<时间>/<任务>
+# 已经以 server_name 结尾的旧路径不会重复追加
 #
 # 单路径：
 #   remote_path: "/backups/nas"
@@ -125,7 +130,7 @@ webdav:
 #
 # enabled：是否启用推送
 # api_url：推送接口
-# server_name：来源服务器名称
+# server_name：来源服务器名称，留空使用顶层 server_name
 # category：service / todo
 # topic：MQTT 主题
 # mode：append / overwrite
@@ -139,7 +144,7 @@ webdav:
 notify:
   enabled: false
   api_url: "https://push-server.o1-1.xct258.top/api/push"
-  server_name: "nas-backup"
+  server_name: ""
   category: "service"
   topic: "backup/webdav"
   mode: "append"

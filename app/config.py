@@ -22,6 +22,17 @@ class ConfigError(Exception):
     """配置错误。"""
 
 
+def _append_server_name(path: str, server_name: str) -> str:
+    """在远端路径后追加 server_name；已经包含时不做重复追加。"""
+    path = _strip_slashes(path)
+    server_name = str(server_name or "").strip().strip("/")
+    if not server_name:
+        return path
+    if path == server_name or path.endswith("/" + server_name):
+        return path
+    return f"{path}/{server_name}"
+
+
 def _env(name: str, default: str | None = None) -> str | None:
     value = os.environ.get(name)
     if value is None or value.strip() == "":
@@ -132,6 +143,8 @@ class WebDAVConfig:
     rclone_config: str = "/data/.rclone.conf"
     # 远端时间目录格式；空字符串表示不加时间目录
     date_format: str = "%Y-%m-%d"
+    # 是否在 remote_path 后自动追加 server_name 子目录
+    append_server_name: bool = True
 
 
 @dataclass
@@ -208,6 +221,7 @@ class Job:
 @dataclass
 class Config:
     config_file: str
+    server_name: str
     schedule: str
     timezone: str
     webdav: WebDAVConfig
@@ -448,17 +462,21 @@ def _parse_webdav(data: dict | None) -> WebDAVConfig:
         remote_name=remote_name,
         rclone_config=_norm_path(str(data.get("rclone_config") or "/data/.rclone.conf")),
         date_format=date_format,
+        append_server_name=_as_bool(data.get("append_server_name"), True),
     )
 
 
-def _parse_notify(data: dict | None, tz_name: str) -> NotifyConfig:
+def _parse_notify(data: dict | None, tz_name: str,
+                  default_server_name: str = "") -> NotifyConfig:
     raw = data or {}
     if not isinstance(raw, dict):
         raise ConfigError("notify 必须是对象")
 
     enabled = _as_bool(raw.get("enabled"), True)
     api_url = str(raw.get("api_url") or "https://push-server.o1-1.xct258.top/api/push").strip()
-    server_name = str(raw.get("server_name") or socket.gethostname()).strip()
+    server_name = str(
+        raw.get("server_name") or default_server_name or socket.gethostname()
+    ).strip()
     topic = str(raw.get("topic") or "backup/webdav").strip()
     category = str(raw.get("category") or "service").strip()
     mode = str(raw.get("mode") or "append").strip().lower()
@@ -757,6 +775,13 @@ def load_config(path: str | None = None) -> Config:
 
     defaults = _parse_defaults(data)
 
+    # 顶层服务器名称：推送和远端目录共用，只写一次
+    server_name = (
+        _env("SERVER_NAME")
+        or str(data.get("server_name") or "").strip()
+        or socket.gethostname()
+    ).strip()
+
     webdav_raw = data.get("webdav")
     if isinstance(webdav_raw, dict):
         # 支持在密码/地址里用 ${ENV_VAR} 引用环境变量
@@ -786,6 +811,21 @@ def load_config(path: str | None = None) -> Config:
         _env("WEBDAV_DATE_FORMAT", webdav.date_format) or ""
     ).strip()
 
+    # 远端路径统一追加 server_name 子目录；已包含该名称时保持原样（兼容旧配置）
+    if webdav.append_server_name:
+        webdav.targets = [
+            RemoteTarget(
+                path=_append_server_name(target.path, server_name),
+                interval=target.interval,
+                keep_last=target.keep_last,
+                keep_days=target.keep_days,
+            )
+            for target in webdav.targets
+        ]
+        paths = [target.path for target in webdav.targets]
+        if len(paths) != len(set(paths)):
+            raise ConfigError("追加 server_name 后 webdav.remote_path 出现重复路径")
+
     # 环境变量覆盖后再校验一次，避免把明显错误带进运行期
     if not webdav.url.startswith(("http://", "https://")):
         raise ConfigError("WEBDAV_URL / webdav.url 必须以 http:// 或 https:// 开头")
@@ -814,7 +854,7 @@ def load_config(path: str | None = None) -> Config:
         _env("SCHEDULE", str(data.get("schedule") or "0 3 * * *")) or "0 3 * * *"
     )
 
-    notify = _parse_notify(data.get("notify"), tz_name)
+    notify = _parse_notify(data.get("notify"), tz_name, server_name)
     notify.api_url = _env("PUSH_API_URL", notify.api_url) or notify.api_url
     notify.server_name = _env("PUSH_SERVER_NAME", notify.server_name) or notify.server_name
     notify.topic = _env("PUSH_TOPIC", notify.topic) or notify.topic
@@ -866,6 +906,7 @@ def load_config(path: str | None = None) -> Config:
 
     config = Config(
         config_file=config_file,
+        server_name=server_name,
         schedule=schedule,
         timezone=tz_name,
         webdav=webdav,
@@ -913,6 +954,7 @@ def _format_interval(seconds: int) -> str:
 def describe(config: Config) -> str:
     lines = [
         f"配置文件：{config.config_file}",
+        f"服务器名称：{config.server_name}",
         f"调度：{config.schedule}（{config.timezone}）",
         f"WebDAV：{config.webdav.url}",
         f"WebDAV 用户：{config.webdav.user}",

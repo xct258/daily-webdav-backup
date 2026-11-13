@@ -79,15 +79,16 @@ cp config/config.example.yml config/config.yml
 - 修改 WebDAV 和 `jobs` 后执行 `docker compose restart`
 - 自动生成要求 `./config` 挂载为可写（默认 compose 已改成 `./config:/config`）
 
-修改 `config/config.yml` 的 `webdav`：
+先在 `config/config.yml` 顶部写一次服务器名，`remote_path` 和推送都会复用它：
 
 ```yaml
+server_name: "my-server"        # 推送和远端目录共用
 webdav:
   url: "https://dav.example.com/dav/"
   user: "backup"
   password: "你的明文密码"
   vendor: "other"
-  remote_path: "/backups/nas"
+  remote_path: "/backups/nas"   # 实际为 /backups/nas/my-server
 ```
 
 密码可以直接写明文，程序启动时会自动执行 `rclone obscure`，生成 `/data/.rclone.conf`（权限 600）。
@@ -135,7 +136,7 @@ discover_root: "/sources"
 每个任务生成一个归档，上传到：
 
 ```text
-<remote_path>/<时间>/<任务名>/
+<remote_path>/<server_name>/<时间>/<任务名>/
 ```
 
 如果某个目录需要单独的排除规则、保留策略、`pre_cmd` 等，再写手动 job。
@@ -188,7 +189,8 @@ schedule: "03:00"
 | `user` | 是 | 用户名 |
 | `password` | 是 | 明文密码，程序自动 obscure |
 | `vendor` | 否 | 默认 `other`；Nextcloud 用 `nextcloud` |
-| `remote_path` | 是 | 远端根路径；字符串或列表 |
+| `remote_path` | 是 | 远端基础路径；程序自动追加 `/<server_name>`，字符串或列表 |
+| `append_server_name` | 否 | 是否追加 server_name 子目录，默认 `true` |
 | `date_format` | 否 | 时间目录格式，默认 `%Y-%m-%d`；空字符串或 `none` 关闭 |
 | `remote_name` | 否 | rclone remote 名，默认 `webdav` |
 | `rclone_config` | 否 | 默认 `/data/.rclone.conf` |
@@ -418,7 +420,7 @@ monitor:
 notify:
   enabled: true
   api_url: "https://push-server.o1-1.xct258.top/api/push"
-  server_name: "nas-backup"
+  server_name: ""        # 留空使用顶层 server_name
   category: "service"
   topic: "backup/webdav"
   mode: "append"
@@ -430,7 +432,7 @@ notify:
 
 | 字段 | 取值 |
 |---|---|
-| `server_name` | 配置里的 `server_name` |
+| `server_name` | 顶层 `server_name`（`notify.server_name` 留空时）|
 | `category` | `service` / `todo` |
 | `topic` | 配置里的 `topic` |
 | `title` | 例如 `备份失败：nas-backup` |

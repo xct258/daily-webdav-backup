@@ -110,16 +110,16 @@ class RemoteLayoutTest(unittest.TestCase):
         when = datetime(2026, 11, 7, 3, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
         self.assertEqual(
             config.job_remote_path(job, target, when),
-            "backups/nas/2026-11-07/etc",
+            "backups/nas/my-server/2026-11-07/etc",
         )
         self.assertEqual(
             config.job_cleanup_root(job, target),
-            "backups/nas",
+            "backups/nas/my-server",
         )
         self.assertEqual(len(config.webdav.targets), 2)
         self.assertEqual(config.webdav.targets[0].interval, 86400)
         self.assertEqual(config.webdav.targets[1].interval, 604800)
-        self.assertEqual(config.webdav.targets[1].path, "backups/nas2")
+        self.assertEqual(config.webdav.targets[1].path, "backups/nas2/my-server")
 
 
 class EncryptionTest(unittest.TestCase):

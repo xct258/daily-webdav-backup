@@ -28,6 +28,16 @@ schedule: "0 3 * * *"
 timezone: "Asia/Shanghai"
 
 # ------------------------------------------------------------
+# 服务器名称（只写一次）
+#
+# 推送的 notify.server_name 和远端的 remote_path 末级目录都用这个值。
+# remote_path 只需要写基础路径，程序会自动追加 /<server_name>；
+# 如果 remote_path 已经以 server_name 结尾（旧配置），不会重复追加。
+# 也可以用环境变量 SERVER_NAME 覆盖。
+# ------------------------------------------------------------
+server_name: "my-server"
+
+# ------------------------------------------------------------
 # 2. 自动发现（推荐）
 #
 # auto_discover=true 时，扫描 discover_root 下的一级子目录，
@@ -74,10 +84,12 @@ discover_root: "/sources"
 #   sharepoint-ntlm SharePoint NTLM
 #   rclone          rclone serve webdav
 #
-# remote_path：远端根路径，下面按任务名分子目录
+# remote_path：远端基础路径，程序会自动追加 /<server_name>
 #   任务 etc 最终上传到：
-#     <remote_name>:<remote_path>/etc/
+#     <remote_name>:<remote_path>/<server_name>/<时间>/etc/
 #
+# append_server_name：是否在 remote_path 后追加 server_name 子目录，默认 true
+#   设为 false 时 remote_path 原样使用（需要自己保证多台机器不冲突）
 # remote_name：rclone remote 名，默认 webdav
 # rclone_config：自动生成的 rclone 配置路径，默认 /data/.rclone.conf
 # ------------------------------------------------------------
@@ -86,6 +98,7 @@ webdav:
   user: "backup"
   password: "change-me"
   vendor: "other"
+  # append_server_name: true
   # 远端路径，支持一个或多个。
   #
   # 字符串形式（单目标，每次调度都上传）：
@@ -125,7 +138,7 @@ webdav:
 #
 # enabled：是否启用推送
 # api_url：推送接口地址
-# server_name：来源服务器名称，会写入推送记录
+# server_name：来源服务器名称，留空时使用顶层 server_name
 # category：service（服务通知）/ todo（待办）
 # topic：MQTT 主题
 # mode：append（追加）/ overwrite（覆盖同 server_name+topic+title）
@@ -139,7 +152,7 @@ webdav:
 notify:
   enabled: true
   api_url: "https://push-server.o1-1.xct258.top/api/push"
-  server_name: "nas-backup"
+  server_name: ""                # 留空使用顶层 server_name
   category: "service"
   topic: "backup/webdav"
   mode: "append"
