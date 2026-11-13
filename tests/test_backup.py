@@ -298,6 +298,31 @@ class SplitFallbackTest(unittest.TestCase):
                 )
 
 
+class Http2RetryTest(unittest.TestCase):
+    def test_retries_with_http1_on_stream_error(self) -> None:
+        config = load_config(os.path.join(ROOT, "config", "config.example.yml"))
+        runner = rclone.Rclone(config)
+        calls: list[list[str]] = []
+
+        class Result:
+            returncode = 0
+            output = ""
+
+        def fake_run(args, **kwargs):
+            calls.append(args)
+            if len(calls) == 1:
+                raise rclone.RcloneError(
+                    "stream error: stream ID 3; PROTOCOL_ERROR; received from peer"
+                )
+            return Result()
+
+        runner._run = fake_run  # type: ignore[assignment]
+        runner.copyto("/tmp/a", "webdav:x")
+        self.assertEqual(len(calls), 2)
+        self.assertIn("--disable-http2", calls[1])
+        self.assertNotIn("--disable-http2", calls[0])
+
+
 class SplitUploadTest(unittest.TestCase):
     def setUp(self) -> None:
         base = load_config(os.path.join(ROOT, "config", "config.example.yml"))
@@ -305,7 +330,7 @@ class SplitUploadTest(unittest.TestCase):
 
     def test_defaults(self) -> None:
         self.assertEqual(self.webdav.split_upload, "auto")
-        self.assertEqual(self.webdav.split_size_mb, 90)
+        self.assertEqual(self.webdav.split_size_mb, 50)
 
     def test_size_rejection_detection(self) -> None:
         self.assertTrue(

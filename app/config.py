@@ -148,7 +148,7 @@ class WebDAVConfig:
     # 大文件分段上传：auto（被拒绝时自动分段）/ always / never
     split_upload: str = "auto"
     # 每段大小（MB）
-    split_size_mb: int = 90
+    split_size_mb: int = 50
 
 
 @dataclass
@@ -461,7 +461,7 @@ def _parse_webdav(data: dict | None) -> WebDAVConfig:
     if split_upload not in {"auto", "always", "never"}:
         raise ConfigError("webdav.split_upload 只能是 auto / always / never")
     split_size_mb = _as_int(
-        data.get("split_size_mb"), 90, "webdav.split_size_mb"
+        data.get("split_size_mb"), 50, "webdav.split_size_mb"
     )
     if not 1 <= split_size_mb <= 4096:
         raise ConfigError("webdav.split_size_mb 必须在 1-4096 之间")

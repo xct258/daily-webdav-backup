@@ -140,11 +140,11 @@ webdav:
   #   always  归档超过 split_size_mb 就始终分段
   #   never   从不分段
   #
-  # split_size_mb：每段大小（MB），默认 90，需小于服务端限制
+  # split_size_mb：每段大小（MB），默认 50，需小于服务端限制
   #   分段文件名为 <归档名>.part001、.part002……
   #   恢复：cat *.part* > 归档 && sha256sum -c 归档.sha256
   split_upload: "auto"
-  split_size_mb: 90
+  split_size_mb: 50
 
   # remote_name: "webdav"
   # rclone_config: "/data/.rclone.conf"

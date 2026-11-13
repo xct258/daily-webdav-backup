@@ -196,7 +196,7 @@ schedule: "03:00"
 | `remote_name` | 否 | rclone remote 名，默认 `webdav` |
 | `rclone_config` | 否 | 默认 `/data/.rclone.conf` |
 | `split_upload` | 否 | `auto`（默认，被拒时自动分段）/ `always` / `never` |
-| `split_size_mb` | 否 | 每段大小，默认 `90` MB |
+| `split_size_mb` | 否 | 每段大小，默认 `50` MB |
 
 ### 大文件分段上传
 
@@ -204,13 +204,13 @@ schedule: "03:00"
 超过就直接返回 **413 Payload Too Large**，整个备份任务会失败。
 
 `split_upload` 默认是 `auto`：整包上传遇到 413 时，自动把归档切成
-`split_size_mb`（默认 90MB）大小的段，逐段上传，备份继续完成。
+`split_size_mb`（默认 50MB）大小的段，逐段上传，备份继续完成。
 
 ```yaml
 webdav:
   # ...
   split_upload: "auto"    # auto / always / never
-  split_size_mb: 90
+  split_size_mb: 50
 ```
 
 - `auto`：只有整包上传被尺寸限制拒绝时才分段，正常情况仍是单文件

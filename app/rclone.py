@@ -173,7 +173,16 @@ class Rclone:
         ]
         if self.config.bwlimit:
             args.extend(["--bwlimit", self.config.bwlimit])
-        self._run(args, timeout=None)
+        try:
+            self._run(args, timeout=None)
+        except RcloneError as exc:
+            # Cloudflare 隧道等环境下 HTTP/2 大请求容易被中途 reset，
+            # 换 HTTP/1.1 再试一次，避免整段上传白跑。
+            text = str(exc)
+            if "PROTOCOL_ERROR" not in text and "stream error" not in text:
+                raise
+            LOG.warning("HTTP/2 上传被中断，改用 HTTP/1.1 重试")
+            self._run(args + ["--disable-http2"], timeout=None)
 
     def moveto(self, src: str, dst: str) -> None:
         self._run(["moveto", src, dst, "--retries", "3"], timeout=3600)
