@@ -18,6 +18,14 @@ def _archive_re(job_name: str) -> re.Pattern[str]:
     )
 
 
+def archive_base(name: str) -> str:
+    """去掉分段后缀（.part001）和 .sha256，得到归档基础名。"""
+    base = re.sub(r"\.part\d+$", "", name)
+    if base.endswith(".sha256"):
+        base = base[: -len(".sha256")]
+    return base
+
+
 def parse_archive_time(name: str, job_name: str, tz: tzinfo) -> datetime | None:
     match = _archive_re(job_name).match(name)
     if not match:
@@ -40,28 +48,37 @@ def remote_cleanup_plan(
     entries 可以是 rclone lsjson 的递归结果：
       Path 是相对于任务根目录的路径，Name 是文件名。
     """
-    matches: list[tuple[str, datetime]] = []
+    # 同一个归档可能由多个文件组成（.part001 / .part002 / .sha256），
+    # 保留策略按归档计数，删除时把整组文件一起删掉。
+    groups: dict[str, dict] = {}
     for item in entries:
         path = str(item.get("Path") or item.get("Name") or "")
         if not path:
             continue
         name = str(item.get("Name") or path.rsplit("/", 1)[-1])
-        when = parse_archive_time(name, job.name, now.tzinfo)
-        if when is not None:
-            matches.append((path, when))
+        base = archive_base(name)
+        when = parse_archive_time(base, job.name, now.tzinfo)
+        if when is None:
+            continue
+        parent = path.rsplit("/", 1)[0] if "/" in path else ""
+        key = f"{parent}/{base}" if parent else base
+        group = groups.setdefault(key, {"when": when, "paths": []})
+        group["paths"].append(path)
 
-    matches.sort(key=lambda pair: pair[1], reverse=True)
+    ordered = sorted(
+        groups.values(), key=lambda group: group["when"], reverse=True
+    )
 
     delete: set[str] = set()
     if job.keep_last > 0:
-        for path, _ in matches[job.keep_last:]:
-            delete.add(path)
+        for group in ordered[job.keep_last:]:
+            delete.update(group["paths"])
 
     if job.keep_days > 0:
         cutoff = now - timedelta(days=job.keep_days)
-        for path, when in matches:
-            if when < cutoff:
-                delete.add(path)
+        for group in ordered:
+            if group["when"] < cutoff:
+                delete.update(group["paths"])
 
     return sorted(delete)
 

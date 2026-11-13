@@ -501,19 +501,19 @@ class Runner:
         plan = retention.remote_cleanup_plan(entries, policy, now(self.config.tz))
         deleted = 0
         for relative_path in plan:
-            if os.path.basename(relative_path) == current_filename:
+            # 保护本次刚上传的归档（含分段）：plan 里已经是整组文件，
+            # .sha256 也在其中，这里不再单独删除校验文件。
+            if (
+                retention.archive_base(os.path.basename(relative_path))
+                == current_filename
+            ):
                 continue
             if self.rclone.delete_file(
                 self.rclone.target(remote_dir, relative_path)
             ):
                 deleted += 1
-                self.rclone.delete_file(
-                    self.rclone.target(
-                        remote_dir, retention.sidecar_name(relative_path)
-                    )
-                )
         if deleted:
-            LOG.info("任务 %s 清理远端旧归档 %s 个", job.name, deleted)
+            LOG.info("任务 %s 清理远端旧归档文件 %s 个", job.name, deleted)
 
     def _cleanup_local(self, job: Job, pending: list[dict]) -> None:
         job_dir = os.path.join(self.config.staging_dir, job.name)

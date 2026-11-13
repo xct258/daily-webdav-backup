@@ -7,6 +7,7 @@
 - WebDAV 地址、用户名、密码、远端路径全部写在 `config/config.yml`
 - 打包前/后可执行自定义命令
 - 上传失败自动重试；容器重启后继续重传未完成的归档
+- 大文件被服务端/代理拒绝（413）时自动分段上传，避免备份失败
 - 远端按份数/天数保留历史备份
 - 通过 MQTT 推送中心发送 Markdown 通知
 - 可选 age / GPG 归档加密
@@ -194,6 +195,43 @@ schedule: "03:00"
 | `date_format` | 否 | 时间目录格式，默认 `%Y-%m-%d`；空字符串或 `none` 关闭 |
 | `remote_name` | 否 | rclone remote 名，默认 `webdav` |
 | `rclone_config` | 否 | 默认 `/data/.rclone.conf` |
+| `split_upload` | 否 | `auto`（默认，被拒时自动分段）/ `always` / `never` |
+| `split_size_mb` | 否 | 每段大小，默认 `90` MB |
+
+### 大文件分段上传
+
+有些服务端或前面的反向代理会限制单次请求体大小，例如 Cloudflare 免费版上限 100MB，
+超过就直接返回 **413 Payload Too Large**，整个备份任务会失败。
+
+`split_upload` 默认是 `auto`：整包上传遇到 413 时，自动把归档切成
+`split_size_mb`（默认 90MB）大小的段，逐段上传，备份继续完成。
+
+```yaml
+webdav:
+  # ...
+  split_upload: "auto"    # auto / always / never
+  split_size_mb: 90
+```
+
+- `auto`：只有整包上传被尺寸限制拒绝时才分段，正常情况仍是单文件
+- `always`：归档超过 `split_size_mb` 就始终分段，适合已知有上限的服务
+- `never`：关闭分段，失败即报错
+
+分段命名固定为 `<归档名>.part001`、`.part002`……，字典序即原始顺序；
+`.sha256` 仍然校验拼接后的完整归档。分段上传支持跳过远端已存在且大小一致的段，
+中断后重试不会重复传输。
+
+**恢复分段的备份**：
+
+```bash
+rclone copy "webdav:/path/to/docker" /tmp/restore
+cd /tmp/restore
+cat docker-*.tar.zst.gpg.part* > docker-20261107-175000.tar.zst.gpg
+sha256sum -c docker-20261107-175000.tar.zst.gpg.sha256
+gpg -d docker-20261107-175000.tar.zst.gpg | zstd -d | tar -xf - -C /
+```
+
+保留策略按“归档”计数，一个归档的所有分段和 `.sha256` 会作为一组一起清理。
 
 ### 多目标
 

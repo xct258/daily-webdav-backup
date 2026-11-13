@@ -110,6 +110,9 @@ webdav:
   user: "backup"
   password: "change-me"
   vendor: "other"
+  # 整包上传被拒绝（如 413）时自动分段上传
+  split_upload: "auto"
+  split_size_mb: 90
   remote_path: "/backups/nas"
   # 多路径示例：把上面单行替换成列表
   # remote_path:

@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
 import retention  # noqa: E402
+import rclone  # noqa: E402
 from archive import archive_name  # noqa: E402
 from config import EncryptionConfig, Job, load_config, normalize_schedule  # noqa: E402
 
@@ -172,6 +173,24 @@ class RetentionTest(unittest.TestCase):
         plan = retention.remote_cleanup_plan(entries, self.job, self.now)
         self.assertEqual(plan, ["2026-11-01/etc-20261101-030000.tar.zst"])
 
+    def test_remote_keep_last_with_split_parts(self) -> None:
+        entries = [
+            {"Path": "2026-11-01/etc-20261101-030000.tar.zst.gpg.part001"},
+            {"Path": "2026-11-01/etc-20261101-030000.tar.zst.gpg.part002"},
+            {"Path": "2026-11-01/etc-20261101-030000.tar.zst.gpg.sha256"},
+            {"Path": "2026-11-02/etc-20261102-030000.tar.zst"},
+            {"Path": "2026-11-03/etc-20261103-030000.tar.zst"},
+        ]
+        plan = retention.remote_cleanup_plan(entries, self.job, self.now)
+        self.assertEqual(
+            plan,
+            [
+                "2026-11-01/etc-20261101-030000.tar.zst.gpg.part001",
+                "2026-11-01/etc-20261101-030000.tar.zst.gpg.part002",
+                "2026-11-01/etc-20261101-030000.tar.zst.gpg.sha256",
+            ],
+        )
+
     def test_local_protects_pending(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             for name in (
@@ -194,6 +213,131 @@ class RetentionTest(unittest.TestCase):
                     "etc-20261103-030000.tar.zst",
                 ],
             )
+
+
+class SplitFallbackTest(unittest.TestCase):
+    def _rclone(self):
+        config = load_config(os.path.join(ROOT, "config", "config.example.yml"))
+        config.webdav.split_size_mb = 1
+        return rclone.Rclone(config)
+
+    def test_413_falls_back_to_parts(self) -> None:
+        runner = self._rclone()
+        remote_files: dict[str, int] = {}
+
+        def fake_copyto(local: str, remote: str) -> None:
+            if remote.endswith(".gpg.part"):
+                raise rclone.RcloneError(
+                    "<title>413 Payload Too Large</title>: 413 Request Entity Too Large"
+                )
+            remote_files[remote] = os.path.getsize(local)
+
+        def fake_stat(remote: str, quiet: bool = False):
+            size = remote_files.get(remote)
+            return {"Size": size} if size is not None else None
+
+        def fake_moveto(src: str, dst: str) -> None:
+            remote_files[dst] = remote_files.pop(src)
+
+        runner.copyto = fake_copyto  # type: ignore[assignment]
+        runner.stat = fake_stat  # type: ignore[assignment]
+        runner.moveto = fake_moveto  # type: ignore[assignment]
+        runner.list_files = lambda *a, **k: []  # type: ignore[assignment]
+        runner.mkdir = lambda *a, **k: None  # type: ignore[assignment]
+        runner.cleanup_parts = lambda *a, **k: None  # type: ignore[assignment]
+        runner.delete_file = lambda *a, **k: True  # type: ignore[assignment]
+        runner._upload_sidecar = lambda *a, **k: None  # type: ignore[assignment]
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(
+                directory, "docker-20261113-000000.tar.zst.gpg"
+            )
+            with open(path, "wb") as handle:
+                handle.write(b"x" * int(2.5 * 1024 * 1024))
+            sha_path = path + ".sha256"
+            with open(sha_path, "w", encoding="utf-8") as handle:
+                handle.write("hash  name\n")
+
+            runner.upload(
+                path,
+                sha_path,
+                "2026-11-13/docker",
+                os.path.basename(path),
+                os.path.getsize(path),
+            )
+
+        parts = sorted(name for name in remote_files if ".part" in name)
+        self.assertEqual(len(parts), 3)
+        self.assertEqual(parts[0].rsplit("/", 1)[-1].rsplit(".", 1)[-1], "part001")
+        self.assertEqual(sum(remote_files.values()), int(2.5 * 1024 * 1024))
+
+    def test_never_keeps_single_upload(self) -> None:
+        runner = self._rclone()
+        runner.webdav.split_upload = "never"
+
+        def fake_copyto(local: str, remote: str) -> None:
+            raise rclone.RcloneError("413 Request Entity Too Large")
+
+        runner.copyto = fake_copyto  # type: ignore[assignment]
+        runner.mkdir = lambda *a, **k: None  # type: ignore[assignment]
+        runner.cleanup_parts = lambda *a, **k: None  # type: ignore[assignment]
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "docker-20261113-000000.tar.zst")
+            with open(path, "wb") as handle:
+                handle.write(b"x" * (2 * 1024 * 1024))
+            sha_path = path + ".sha256"
+            open(sha_path, "w").close()
+            with self.assertRaises(rclone.RcloneError):
+                runner.upload(
+                    path,
+                    sha_path,
+                    "2026-11-13/docker",
+                    os.path.basename(path),
+                    os.path.getsize(path),
+                )
+
+
+class SplitUploadTest(unittest.TestCase):
+    def setUp(self) -> None:
+        base = load_config(os.path.join(ROOT, "config", "config.example.yml"))
+        self.webdav = base.webdav
+
+    def test_defaults(self) -> None:
+        self.assertEqual(self.webdav.split_upload, "auto")
+        self.assertEqual(self.webdav.split_size_mb, 90)
+
+    def test_size_rejection_detection(self) -> None:
+        self.assertTrue(
+            rclone.looks_like_size_rejection(
+                "<title>413 Payload Too Large</title>"
+            )
+        )
+        self.assertTrue(
+            rclone.looks_like_size_rejection("413 Request Entity Too Large")
+        )
+        self.assertFalse(
+            rclone.looks_like_size_rejection("connection reset by peer")
+        )
+
+    def test_part_names_sort_in_order(self) -> None:
+        names = [rclone.part_name("a.tar", i, 12) for i in range(1, 13)]
+        self.assertEqual(names[0], "a.tar.part001")
+        self.assertEqual(names[-1], "a.tar.part012")
+        self.assertEqual(sorted(names, reverse=True)[-1], names[0])
+
+    def test_invalid_split_config(self) -> None:
+        import yaml
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "config.yml")
+            with open(os.path.join(ROOT, "config", "config.example.yml"), encoding="utf-8") as handle:
+                data = yaml.safe_load(handle)
+            data["webdav"]["split_upload"] = "sometimes"
+            with open(path, "w", encoding="utf-8") as handle:
+                yaml.safe_dump(data, handle, allow_unicode=True)
+            with self.assertRaises(Exception):
+                load_config(path)
 
 
 if __name__ == "__main__":

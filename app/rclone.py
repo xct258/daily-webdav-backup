@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -17,6 +19,24 @@ LOG = logging.getLogger("backup.rclone")
 
 class RcloneError(Exception):
     """rclone 操作失败。"""
+
+
+# 服务端/代理拒绝超大请求体的典型错误
+_SIZE_REJECT_RE = re.compile(
+    r"\b413\b|payload too large|request entity too large|entity too large",
+    re.IGNORECASE,
+)
+# 分段文件名：<归档名>.part001
+_PART_SUFFIX_RE = re.compile(r"\.part\d+$")
+
+
+def looks_like_size_rejection(message: str) -> bool:
+    return bool(_SIZE_REJECT_RE.search(message or ""))
+
+
+def part_name(filename: str, index: int, total: int) -> str:
+    digits = max(3, len(str(total)))
+    return f"{filename}.part{index:0{digits}d}"
 
 
 def _join_remote(base: str, *parts: str) -> str:
@@ -255,15 +275,41 @@ class Rclone:
         filename: str,
         size: int,
     ) -> str:
-        """上传归档和 .sha256；先传 .part，校验大小后再 moveto 正式文件名。"""
+        """上传归档和 .sha256；先传 .part，校验大小后再 moveto 正式文件名。
+
+        当服务端或前面的代理拒绝大请求体（例如 Cloudflare 的 413）时，
+        自动改用分段上传，避免整个备份任务失败。
+        """
         self.mkdir(remote_dir)
         self.cleanup_parts(remote_dir)
 
+        part_bytes = max(1, self.webdav.split_size_mb) * 1024 * 1024
         final_remote = self.target(remote_dir, filename)
         temp_remote = self.target(remote_dir, "." + filename + ".part")
 
+        if self.webdav.split_upload == "always" and size > part_bytes:
+            LOG.info("按配置使用分段上传：%s", filename)
+            return self._upload_split(
+                local_archive, sha_path, remote_dir, filename, size, part_bytes
+            )
+
         LOG.info("上传 %s -> %s（%.1f MB）", filename, remote_dir, size / 1024 / 1024)
-        self.copyto(local_archive, temp_remote)
+        try:
+            self.copyto(local_archive, temp_remote)
+        except RcloneError as exc:
+            if (
+                self.webdav.split_upload == "auto"
+                and size > part_bytes
+                and looks_like_size_rejection(str(exc))
+            ):
+                LOG.warning(
+                    "整包上传被拒绝（超过服务端/代理限制），改用分段上传：%s", exc
+                )
+                self.delete_file(temp_remote)
+                return self._upload_split(
+                    local_archive, sha_path, remote_dir, filename, size, part_bytes
+                )
+            raise
 
         remote_stat = self.stat(temp_remote, quiet=True)
         if remote_stat is None:
@@ -275,7 +321,12 @@ class Rclone:
             )
 
         self.moveto(temp_remote, final_remote)
+        self._upload_sidecar(sha_path, remote_dir, filename)
 
+        LOG.info("上传完成：%s", final_remote)
+        return final_remote
+
+    def _upload_sidecar(self, sha_path: str, remote_dir: str, filename: str) -> None:
         sha_name = filename + ".sha256"
         temp_sha = self.target(remote_dir, "." + sha_name + ".part")
         final_sha = self.target(remote_dir, sha_name)
@@ -286,8 +337,87 @@ class Rclone:
             # 归档本身已经上传成功，校验文件失败只告警，不把整个任务判失败
             LOG.warning("上传校验文件失败：%s", exc)
 
-        LOG.info("上传完成：%s", final_remote)
-        return final_remote
+    def _upload_split(
+        self,
+        local_archive: str,
+        sha_path: str,
+        remote_dir: str,
+        filename: str,
+        size: int,
+        part_bytes: int,
+    ) -> str:
+        """把归档切成若干段依次上传，每段都小于服务端限制。
+
+        段名固定为 <归档名>.part001、.part002……，按名称排序即为原始顺序；
+        恢复时 cat 拼接后校验 .sha256。
+        """
+        total = max(1, (size + part_bytes - 1) // part_bytes)
+        names = [part_name(filename, index, total) for index in range(1, total + 1)]
+        LOG.info(
+            "分段上传 %s -> %s：%d 段，每段 %.1f MB",
+            filename,
+            remote_dir,
+            total,
+            part_bytes / 1024 / 1024,
+        )
+
+        entries = self.list_files(remote_dir)
+        remote_sizes = {
+            str(item.get("Name") or ""): item.get("Size") for item in entries
+        }
+
+        # 清掉同名的整包文件和多余旧分段，避免上次中断留下的残片混进来
+        if filename in remote_sizes:
+            self.delete_file(self.target(remote_dir, filename))
+        for name in remote_sizes:
+            if (
+                name.startswith(filename + ".part")
+                and _PART_SUFFIX_RE.search(name)
+                and name not in names
+            ):
+                LOG.info("清理多余旧分段：%s", name)
+                self.delete_file(self.target(remote_dir, name))
+
+        split_dir = tempfile.mkdtemp(
+            prefix=".split-", dir=os.path.dirname(local_archive) or "."
+        )
+        try:
+            with open(local_archive, "rb") as handle:
+                for index, name in enumerate(names, 1):
+                    handle.seek((index - 1) * part_bytes)
+                    data = handle.read(part_bytes)
+                    if not data:
+                        raise RcloneError(f"读取分段失败：{name} 为空")
+                    if remote_sizes.get(name) == len(data):
+                        LOG.info("分段 %d/%d 已存在，跳过：%s", index, total, name)
+                        continue
+                    part_path = os.path.join(split_dir, name)
+                    with open(part_path, "wb") as out:
+                        out.write(data)
+                    temp_remote = self.target(remote_dir, "." + name + ".part")
+                    self.copyto(part_path, temp_remote)
+                    remote_stat = self.stat(temp_remote, quiet=True)
+                    if remote_stat is None or remote_stat.get("Size") != len(data):
+                        raise RcloneError(
+                            f"分段大小校验失败：{name} 本地 {len(data)} 字节，"
+                            f"远端 {remote_stat.get('Size') if remote_stat else '未知'}"
+                        )
+                    self.moveto(temp_remote, self.target(remote_dir, name))
+                    os.unlink(part_path)
+                    LOG.info(
+                        "分段 %d/%d 上传完成：%s（%.1f MB）",
+                        index,
+                        total,
+                        name,
+                        len(data) / 1024 / 1024,
+                    )
+        finally:
+            shutil.rmtree(split_dir, ignore_errors=True)
+
+        self._upload_sidecar(sha_path, remote_dir, filename)
+
+        LOG.info("分段上传完成：%s（%d 段）", filename, total)
+        return f"{remote_dir}/{names[0]}…{names[-1]}（{total} 段）"
 
     def cleanup_parts(self, remote_dir: str, max_age_hours: int = 24) -> None:
         """清理超过 24 小时的 .part 临时文件，避免中断后长期堆积。"""

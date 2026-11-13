@@ -130,6 +130,22 @@ webdav:
   # 空字符串或 "none" 表示不加时间目录
   date_format: "%Y-%m-%d"
 
+  # 大文件分段上传
+  #
+  # 有些服务端或前面的代理（例如 Cloudflare 免费版）会限制单次请求体大小，
+  # 超过就直接返回 413，导致备份失败。开启后会自动把归档切成若干段上传。
+  #
+  # split_upload：
+  #   auto    整包上传被拒绝（413/Request Entity Too Large）时自动分段（默认）
+  #   always  归档超过 split_size_mb 就始终分段
+  #   never   从不分段
+  #
+  # split_size_mb：每段大小（MB），默认 90，需小于服务端限制
+  #   分段文件名为 <归档名>.part001、.part002……
+  #   恢复：cat *.part* > 归档 && sha256sum -c 归档.sha256
+  split_upload: "auto"
+  split_size_mb: 90
+
   # remote_name: "webdav"
   # rclone_config: "/data/.rclone.conf"
 

@@ -145,6 +145,10 @@ class WebDAVConfig:
     date_format: str = "%Y-%m-%d"
     # 是否在 remote_path 后自动追加 server_name 子目录
     append_server_name: bool = True
+    # 大文件分段上传：auto（被拒绝时自动分段）/ always / never
+    split_upload: str = "auto"
+    # 每段大小（MB）
+    split_size_mb: int = 90
 
 
 @dataclass
@@ -453,6 +457,15 @@ def _parse_webdav(data: dict | None) -> WebDAVConfig:
     if date_format.lower() in {"none", "off", "false"}:
         date_format = ""
 
+    split_upload = str(data.get("split_upload") or "auto").strip().lower()
+    if split_upload not in {"auto", "always", "never"}:
+        raise ConfigError("webdav.split_upload 只能是 auto / always / never")
+    split_size_mb = _as_int(
+        data.get("split_size_mb"), 90, "webdav.split_size_mb"
+    )
+    if not 1 <= split_size_mb <= 4096:
+        raise ConfigError("webdav.split_size_mb 必须在 1-4096 之间")
+
     return WebDAVConfig(
         url=url,
         user=user,
@@ -463,6 +476,8 @@ def _parse_webdav(data: dict | None) -> WebDAVConfig:
         rclone_config=_norm_path(str(data.get("rclone_config") or "/data/.rclone.conf")),
         date_format=date_format,
         append_server_name=_as_bool(data.get("append_server_name"), True),
+        split_upload=split_upload,
+        split_size_mb=split_size_mb,
     )
 
 
@@ -810,6 +825,14 @@ def load_config(path: str | None = None) -> Config:
     webdav.date_format = (
         _env("WEBDAV_DATE_FORMAT", webdav.date_format) or ""
     ).strip()
+    webdav.split_upload = (
+        _env("WEBDAV_SPLIT_UPLOAD", webdav.split_upload) or "auto"
+    ).strip().lower()
+    if webdav.split_upload not in {"auto", "always", "never"}:
+        raise ConfigError("WEBDAV_SPLIT_UPLOAD 只能是 auto / always / never")
+    webdav.split_size_mb = max(
+        1, _env_int("WEBDAV_SPLIT_SIZE_MB", webdav.split_size_mb)
+    )
 
     # 远端路径统一追加 server_name 子目录；已包含该名称时保持原样（兼容旧配置）
     if webdav.append_server_name:
@@ -959,6 +982,7 @@ def describe(config: Config) -> str:
         f"WebDAV：{config.webdav.url}",
         f"WebDAV 用户：{config.webdav.user}",
         f"远端时间目录：{config.webdav.date_format or '关闭'}",
+        f"大文件分段：{config.webdav.split_upload}（每段 {config.webdav.split_size_mb} MB）",
         "WebDAV 目标：",
     ]
     for target in config.webdav.targets:
